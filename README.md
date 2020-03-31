@@ -1,2 +1,3 @@
-# biostamp-site
-BioStamp3™ web site and supplemental documentation
+# biostamp3.com
+
+This repository contains assets for the BioStamp3™ public-facing web site.
