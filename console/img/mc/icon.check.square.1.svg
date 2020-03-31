@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="22px" height="22px" viewBox="0 0 22 22" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 58 (84663) - https://sketch.com -->
+    <title>check.square.1</title>
+    <desc>Created with Sketch.</desc>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-477.000000, -384.000000)" id="check.square.1">
+            <g transform="translate(478.205505, 385.000000)">
+                <rect id="path" fill="#009CFF" x="1.13686838e-13" y="0" width="19.6653387" height="19.6653387" rx="2"></rect>
+                <path d="M14.1496454,5.42825521 L8.67989496,10.8980056 L5.99148534,8.21079513 C5.37664055,7.59595034 4.38017828,7.59595034 3.7665326,8.21079513 C3.15168781,8.82534015 3.15168781,9.82090308 3.7665326,10.4354481 L7.56741859,14.2366339 C7.87439132,14.5436066 8.27729302,14.6979923 8.67989496,14.6979923 C9.08279666,14.6979923 9.48569837,14.5448057 9.79237132,14.2366339 L16.3745981,7.65440706 C16.9882438,7.03836315 16.9882438,6.0431 16.3745981,5.42825521 C15.7600531,4.81371019 14.7644902,4.81371019 14.1496454,5.42825521 Z" id="path" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>

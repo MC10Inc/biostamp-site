@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="23px" height="23px" viewBox="0 0 23 23" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 52.3 (67297) - http://www.bohemiancoding.com/sketch -->
+    <title>record</title>
+    <desc>Created with Sketch.</desc>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-295.000000, -387.000000)" fill="#009CFF" id="record">
+            <g transform="translate(295.000000, 387.000000)">
+                <path d="M11.6659694,23 C5.40635711,23 0.331938752,17.8512746 0.331938752,11.5 C0.331938752,5.14872538 5.40635711,0 11.6659694,0 C17.9255816,0 23,5.14872538 23,11.5 C23,17.8512746 17.9255816,23 11.6659694,23 Z M11.6659694,15 C13.598966,15 15.1659694,13.4329966 15.1659694,11.5 C15.1659694,9.56700338 13.598966,8 11.6659694,8 C9.73297275,8 8.16596938,9.56700338 8.16596938,11.5 C8.16596938,13.4329966 9.73297275,15 11.6659694,15 Z" id="icon"></path>
+            </g>
+        </g>
+    </g>
+</svg>

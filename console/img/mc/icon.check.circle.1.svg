@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="25px" height="24px" viewBox="0 0 25 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 52.5 (67469) - http://www.bohemiancoding.com/sketch -->
+    <title>checked</title>
+    <desc>Created with Sketch.</desc>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-462.000000, -358.000000)" id="checked">
+            <g transform="translate(462.500000, 358.000000)">
+                <circle id="path" fill="#009CFF" cx="11.7826321" cy="11.7826321" r="11.7826321"></circle>
+                <path d="M18.7175627,7.50699964 C18.0415632,6.83100012 16.946444,6.83100012 16.2701147,7.50699964 L10.2533892,13.5237251 L7.29613867,10.5677936 C6.61980939,9.89146428 5.5237009,9.89146428 4.84869065,10.5677936 C4.17236138,11.2437931 4.17236138,12.3389123 4.84869065,13.0149118 L9.02966523,17.1962162 C9.36733524,17.5338862 9.81052712,17.7037104 10.2533892,17.7037104 C10.6965811,17.7037104 11.139773,17.5352052 11.4771132,17.1962162 L18.7175627,9.95576667 C19.392573,9.27811838 19.392573,8.18332891 18.7175627,7.50699964 L18.7175627,7.50699964 Z" id="path" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>

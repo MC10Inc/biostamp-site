@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24px" height="24px" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 47 (45396) - http://www.bohemiancoding.com/sketch -->
+    <title>move</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-114.000000, -385.000000)" id="move" fill-rule="nonzero" fill="#009CFF">
+            <g transform="translate(114.000000, 385.000000)">
+                <path d="M6.85128,5.21352 L12.06456,0 L17.14872,5.21352 L6.85128,5.21352 Z M17.14872,18.78648 L11.93448,24 L6.85128,18.78648 L17.14872,18.78648 Z M18.78648,6.85128 L24,12.06552 L18.78648,17.14872 L18.78648,6.85128 Z M5.21352,17.14872 L0,11.93448 L5.21352,6.85128 L5.21352,17.14872 Z M14.93352,12.19584 C14.93352,13.809288 13.624776,15.11808 12.01032,15.11808 C10.396872,15.11808 9.08808,13.809336 9.08808,12.19584 C9.08808,10.581456 10.396824,9.27264 12.01032,9.27264 C13.624704,9.27264 14.93352,10.581384 14.93352,12.19584 Z" id="icon"></path>
+            </g>
+        </g>
+    </g>
+</svg>

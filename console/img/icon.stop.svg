@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="23px" height="24px" viewBox="0 0 23 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 52.3 (67297) - http://www.bohemiancoding.com/sketch -->
+    <title>stop</title>
+    <desc>Created with Sketch.</desc>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-391.000000, -662.000000)" fill="#333333" fill-rule="nonzero" id="stop">
+            <g transform="translate(391.000000, 662.385446)">
+                <path d="M16.3012362,0.514730969 L22.9624464,6.9856209 L22.9624464,16.2016623 L16.3012362,22.6725522 L6.81558306,22.6725522 L0.152924587,16.2016623 L0.152924587,6.9856209 L6.81558306,0.514730969 L16.3012362,0.514730969 Z M11.5576855,15.5364987 C13.7993119,15.5364987 15.616509,13.7712215 15.616509,11.5936416 C15.616509,9.41606172 13.7993119,7.65078444 11.5576855,7.65078444 C9.31605918,7.65078444 7.49886199,9.41606172 7.49886199,11.5936416 C7.49886199,13.7712215 9.31605918,15.5364987 11.5576855,15.5364987 Z" id="icon"></path>
+            </g>
+        </g>
+    </g>
+</svg>
