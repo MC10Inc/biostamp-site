@@ -1454,10 +1454,16 @@ var config = new _SensorConfig.SensorConfig();
 var emitter = new mc.Emitter();
 var db = void 0;
 
-try {
-  db = new BiostampDb();
-} catch (e) {
-  mc.ui.blast("Oh no! This app could not open a local database. Check your browser settings.", { level: "warn" });
+if (!navigator.bluetooth) {
+  mc.ui.blast("This application requires the Web Bluetooth API. Try Google Chrome or Microsoft Edge.", { level: "warn" });
+}
+
+if (navigator.bluetooth) {
+  try {
+    db = new BiostampDb();
+  } catch (e) {
+    mc.ui.blast("Oh no! This app could not open a local database. Check your browser settings.", { level: "warn" });
+  }
 }
 
 var SensorView = exports.SensorView = function (_React$Component) {
@@ -2096,11 +2102,12 @@ var SensorView = exports.SensorView = function (_React$Component) {
                 icon: "./img/icon.db.svg",
                 scale: 1.1,
                 onPress: this.openDatabaseView.bind(this),
+                disabled: !navigator.bluetooth,
                 label: "DB" }),
               React.createElement(IconButton, {
                 icon: "./img/icon.bluetooth.svg",
                 scale: 1.1,
-                disabled: !!sensor,
+                disabled: !!sensor || !navigator.bluetooth,
                 onPress: this.invokeScan.bind(this),
                 label: "Scan" })
             )
