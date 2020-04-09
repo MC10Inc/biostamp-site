@@ -397,7 +397,7 @@ var SensorConfig = exports.SensorConfig = function () {
         }
       }, {
         key: "samplingPeriodUs",
-        values: [100000, 50000, 32000, 25000, 12500, 8000, 6250],
+        values: [100000, 50000, 32000, 25000, 16000, 12500, 8000, 6250],
         tx: function tx(n) {
           return 1000000 / n + "Hz";
         }
