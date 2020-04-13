@@ -12,11 +12,8 @@ body {
   background: #DDE1E8;
 }
 
-#main {
-  text-align: left;
-  max-width: 1200px;
-  margin: 0 auto;
-  background: white;
+a, a:visited {
+  color: #009cff;
 }
 
 #ribbon {
@@ -25,29 +22,67 @@ body {
   text-align: right;
 }
 
-a, a:visited {
-  color: #009cff;
+#main, #doc {
+  text-align: left;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
 }
 
-section {
+#main section {
   min-height: 200px;
   padding: 2em 3em;
 }
 
-section:not(.hero):nth-child(even) {
+#main section:not(.hero):nth-child(even) {
   background: #f4f7fb;
 }
 
+#doc {
+  background: white;
+  padding: 3em;
+}
+
+#doc #logo {
+  margin-bottom: 1em;
+}
+
+#doc section {
+  margin: 2em 0;
+}
+
+#doc ul {
+  margin: 1em 3em;
+}
+
+table {
+  border-collapse: collapse;
+  margin-bottom: 1em;
+}
+
+th, td {
+  padding: 0.25em 2em 0.25em 0;
+  text-align: left;
+}
+
+th {
+  border-bottom: 1px solid #ccc;
+}
+
+h1, h2, h3 {
+  color: #283577;
+  margin-bottom: 0.5em;
+}
+
 h1 {
+  font-size: 1.75em;
 }
 
 h2 {
-  margin-bottom: 0.5em;
-  color: #283577;
+  font-size: 1.5em;
 }
 
 h3 {
-  color: #333;
   font-size: 1.1em;
 }
 
@@ -112,5 +147,23 @@ p, li {
 }
 
 ul {
-  margin: 1em;
+  margin: 0 1em 1em 1em;
+}
+
+pre, code {
+  font-family: Consolas, Courier, monospace;
+  font-size: 0.95em;
+  background: #eee;
+  padding: 0.05em 0.25em;
+}
+
+pre {
+  border: 1px solid #ddd;
+  padding: 1em 0;
+}
+
+footer {
+  margin-top: 5em;
+  border-top: 1px solid #ccc;
+  padding-top: 1em;
 }

@@ -1,0 +1,310 @@
+<html>
+
+<head>
+
+<title>Getting Started with BioStamp3™</title>
+
+<meta name="title" content="Getting Started with BioStamp3™"/>
+<meta name="description" content="This document is intended for developers who want to build applications with BioStamp3™ sensors."/>
+
+<link rel="shortcut icon" href="../img/favicon.png"/>
+
+<link href="../css/site.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Lato:400,700&display=swap" rel="stylesheet">
+
+</head>
+
+<body>
+
+<div id="doc">
+
+<img id="logo" src="../img/logo.svg" width="200" alt="BioStamp3™ logo" style="margin-bottom:3em"/>
+
+<h1>Getting Started with BioStamp3™</h1>
+
+<p>This document is intended for developers who want to build applications with BioStamp3™ sensors. Separate, lower-level API documentation is provided with each SDK: <a href="https://github.com/MC10Inc/biostamp-android">biostamp-android</a>, <a href="https://github.com/MC10Inc/biostamp-ios">biostamp-ios</a> and <a href="https://github.com/MC10Inc/biostamp-js">biostamp-js</a>.</p>
+
+<section>
+  <h2 id="contents">Table of Contents</h2>
+
+  <ul>
+    <li><a href="#introduction">Introduction</a></li>
+    <li><a href="#requirements">Requirements</a></li>
+    <li><a href="#platforms">Platforms</a></li>
+    <li><a href="#battery">Battery and Memory</a></li>
+    <li><a href="#wireless">Wireless Range</a></li>
+    <li><a href="#clock">Clock Precision</a></li>
+    <li><a href="#hello">Hello, World!</a></li>
+    <li><a href="#sensing">Start Sensing</a></li>
+    <li><a href="#streaming">Start Streaming</a></li>
+    <li><a href="#recording">Create a Recording</a></li>
+    <li><a href="#annotating">Annotate a Recording</a></li>
+    <li><a href="#list_recordings">List Recordings</a></li>
+    <li><a href="#downloading">Download a Recording</a></li>
+    <li><a href="#firmware">Update Firmware</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#components">Technical Components</a></li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="introduction">Introduction</h2>
+
+  <p>Welcome to BioStamp®! The BioStamp3™ sensor is a highly configurable, research-grade biometric device that can be applied to the surface of the skin for hours or days at a time. It measures various physiological functions, such as electrodermal activity (EDA), and connects wirelessly to a phone, tablet or computer.</p>
+
+  <p>Multiple sensors can be worn on the body at the same time.</p>
+
+  <p>The sensor is rechargable, reusable, shower-proof and designed to be worn during almost any activity, including exercise and sleep.</p>
+
+  <p>Your application will command and control the sensor while providing instructions and feedback to the user. Typical operations include:</p>
+
+  <ul>
+    <li>Starting and stopping sensing</li>
+    <li>Streaming data in real time</li>
+    <li>Downloading a recording</li>
+    <li>Deleting recordings from memory</li>
+    <li>Reading battery level and memory usage</li>
+    <li>Updating the firmware</li>
+  </ul>
+
+  <p>Whether you're developing a virtual clinical trial or building biometric algorithms, the BioStamp3™ sensor can help you unlock novel insights from the human body.</p>
+</section>
+
+<section>
+  <h2 id="requirements">Requirements</h2>
+
+  <p>Your application must run on a device that supports Bluetooth 4.0 with <a href="https://en.wikipedia.org/wiki/Bluetooth_Low_Energy" target="_blank">Bluetooth Low Energy (BLE)</a>. Bluetooth 4.0 or 4.1 is sufficient for command and control of the sensor but has poor data throughput. Bluetooth 4.2 has acceptable throughput, and Bluetooth 5.0 or newer offers further improvement.</p>
+</section>
+
+<section>
+  <h2 id="platforms">Platforms</h2>
+
+  <p>BioStamp3™ is available for the following platforms:</p>
+
+  <ul>
+    <li>Android</li>
+    <li>iOS</li>
+    <li>Node.js</li>
+    <li>Chromium-based web browsers (Google Chrome and Microsoft Edge)</li>
+  </ul>
+
+  <p><em>Some features may differ slightly between mobile platforms (Android, iOS) and desktop platforms (Node.js, Google Chrome). Refer to the documentation in the SDK.</em></p>
+</section>
+
+<section>
+  <h2 id="battery">Battery and Memory</h2>
+
+  <p>The BioStamp3™ sensor is powered by a 90 mAh battery and has 256 MB of flash memory.</p>
+
+  <p>The operating time, or continuous runtime, of a fully-charged sensor under normal environmental conditions depends on its sensing configuration and whether you are streaming data, recording it, or doing both at the same time. As a rule, higher sampling rates will use more power and generate more data.</p>
+
+  <p>Depending on your use case, the sensor may run for several hours or several days. <em>You should experiment with different configuration settings as you develop your application.</em></p>
+
+  <p>You may extend the effective wear time of a sensor by:</p>
+
+  <ul>
+    <li>sensing only during prescribed activities</li>
+    <li>using different sensing configurations at different times of the day</li>
+    <li>sensing only when the wearer indicates he or she is experiencing "episodes" or "on states" of a disease</li>
+    <li>scheduling sensing to stop automatically</li>
+  </ul>
+
+  <p>You may charge the sensor using the Qi charger you received in your development kit. A blue light indicates the sensor is charging; a green light indicates the sensor is charged and read to use.</p>
+</section>
+
+<section>
+  <h2 id="wireless">Wireless Range</h2>
+
+  <p>The BioStamp3™ sensor uses Bluetooth Low Energy (BLE) to communicate with a client device, such as a mobile phone.</p>
+
+  <p>The distance between the sensor and client device should not exceed 10 feet, but this may vary from one environment to another and from one client device to another.</p>
+
+  <p>Whether you're connecting to the sensor for a few seconds or a few hours at a time, you should anticipate that a connection might drop for reasons outside your control. Take care to handle such incidents gracefully in your code.</p>
+</section>
+
+<section>
+  <h2 id="clock">Clock Precision</h2>
+
+  <p>The BioStamp3™ sensor has an internal clock with <em>microsecond</em> precision. Consider the following accelerometer samples taken at 160Hz (160 samples per second):</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Sample (x)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1586548939.2402344</td>
+        <td>0.06689657270908356</td>
+      </tr>
+      <tr>
+        <td>1586548939.2464843</td>
+        <td>0.06884975731372833</td>
+      </tr>
+      <tr>
+        <td>1586548939.2527342</td>
+        <td>0.07470931112766266</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Each sample is approximately 0.00625 seconds, or 6,250 microseconds, apart.</p>
+
+  <p>It is your responsibility to set the time before starting a sensing operation. Refer to the documentation and examples in the SDK.</p>
+</section>
+
+<section>
+  <h2 id="hello">Hello, World!</h2>
+
+  <p>The BioStamp3™ sensor can say "hello" by blinking its LED. As your first task, try connecting to a sensor, blinking the LED, then disconnecting from the sensor. Refer to the documentation and examples in the SDK.</p>
+
+  <p><em>You may connect to more than one sensor at a time.</em></p>
+</section>
+
+<section>
+  <h2 id="sensing">Start Sensing</h2>
+
+  <p>The BioStamp3™ sensor has four general sensing modes:</p>
+
+  <ul>
+    <li><b>Motion</b>: 3-axis gyroscope, accelerometer and compass up to 562 Hz</li>
+    <li><b>AFE</b>: Standalone ECG up to 4 kHz; Synchronized Photoplethysmogram (PPG) and ECG up to 1 kHz; Reflected SpO2 measurement using red and/or green light</li>
+    <li><b>Environment</b>: Temperature with range of –10°C to 100°C, accurate to ±2°C; Piezoresistive pressure sensor (altimeter) with range of 260 to 1260 hPa</li>
+    <li><b>Bioimpedance</b>: Electrodermal activity (EDA)</li>
+  </ul>
+
+  <p>You must enable at least one of these modes in a <em>configuration</em> given to the sensor at the start of sensing. Refer to the <a href="config.html">Configuration Guide</a> for specific information about each mode.</p>
+
+  <p>You may stream data while sensing and/or record it, as described below.</p>
+
+  <p>You may stop sensing at any time, or you may schedule sensing to stop after a certain amount of time has elapsed.</p>
+
+  <p>Sensing proceeds until (a) you stop sensing, (b) the battery dies, or (c) the memory fills up, whichever comes first.</p>
+
+  <p><em>You may disconnect from the sensor while sensing.</em></p>
+</section>
+
+<section>
+  <h2 id="streaming">Start Streaming</h2>
+
+  <p>After you start sensing, you can command the sensor to <em>stream</em> data to your application in real time. You might do this for several reasons:</p>
+
+  <ul>
+    <li>to check signal quality</li>
+    <li>to plot raw data values</li>
+    <li>to calibrate data</li>
+    <li>to capture the data as it is collected rather than making a recording and downloading it later</li>
+  </ul>
+
+  <p><em>Streaming for long periods may reduce the runtime.</em></p>
+</section>
+
+<section>
+  <h2 id="recording">Create a Recording</h2>
+
+  <p>You may record data by <em>enabling recording</em> in the sensing configuration. Then you may downloaded the recording later, as described below.</p>
+
+  <p>You may describe a recording by adding <em>metadata</em> to the sensing configuration. Metadata may contain any information that your application needs, such as:</p>
+
+  <ul>
+    <li>placement of the sensor, e.g. "Left Tibialis"</li>
+    <li>description of the environment, e.g. "Home"</li>
+    <li>identification of the wearer, e.g. "Subject_01"</li>
+    <li>identifying characteristics of the wearer, e.g. "Male, 32"</li>
+  </ul>
+
+  <p>Recordings may eventually fill up the sensor's memory, so take care to delete old recordings after you download them.</p>
+</section>
+
+<section>
+  <h2 id="annotating">Annotate a Recording</h2>
+
+  <p>You may <em>annotate</em> a recording while it is in progress to mark certain events or indicate areas of interest. Annotations are stored alongside the physiological data and use the same high-resolution timestamps.</p>
+
+  <p>Annotations may be used to:</p>
+
+  <ul>
+    <li>mark the start and stop of a calibration sequence</li>
+    <li>log exercises or other prescribed activities</li>
+    <li>log disease episodes or "on" states</li>
+    <li>log medicine usage</li>
+    <li>enter notes or observations</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="list_recordings">List Recordings</h2>
+
+  <p>You may <em>list</em> all recordings stored on the sensor. Each recording has an index, ID, timestamp, duration (in seconds), sensing configuration, size (in bytes), and optional metadata.</p>
+
+  <p>You may delete the oldest recording (index 0), or you may delete all recordings at once.</p>
+</section>
+
+<section>
+  <h2 id="downloading">Download a Recording</h2>
+
+  <p>You may <em>download</em> a recording into a local database provided by the SDK, then export it in a convenient format, such as CSV. Refer to the documentation and examples in the SDK.</p>
+
+  <p>The size of a recording depends on its duration and sensing configuration.</p>
+
+  <p>Download speeds depend on the strength of the connection and the capabilities of the connected device, but generally range from 20 KB/sec to 30 KB/sec. Therefore it might take 35-45 seconds to download 1MB of data.</p>
+
+  <p>Recordings may eventually fill up the sensor's memory, so take care to delete old recordings after you download them.</p>
+</section>
+
+<section>
+  <h2 id="firmware">Update Firmware</h2>
+
+  <p>MC10 may periodically release new firmware images to the <a href="https://github.com/MC10Inc/biostamp-firmware">biostamp-firmware</a> repository on GitHub. <em>Watch this repository for updates.</em></p>
+
+  <p>To update a sensor's firmware, download the latest image and follow the directions in the SDK.</p>
+</section>
+
+<section>
+  <h2 id="troubleshooting">Troubleshooting</h2>
+
+  <p>The sensor generates "faults" when its firmware encounters a fatal error condition that causes the sensor to reset, or when the sensor turns off due to a low battery. These faults may be retrieved from the sensor and sent to MC10 to assist in troubleshooting.</p>
+</section>
+
+<section>
+  <h2 id="components">Technical Components</h2>
+
+  <p>The BioStamp3™ sensor includes the following components:</p>
+
+  <h3>Motion</h3>
+
+  <ul>
+    <li><a href="https://invensense.tdk.com/products/motion-tracking/9-axis/icm-20948/" target="_blank">TDK Invensense ICM-20948</a></li>
+  </ul>
+
+  <h3>AFE (Analog Front End)</h3>
+
+  <ul>
+    <li><a href="http://www.ti.com/product/AFE4900" target="_blank">Texas Instruments AFE4900</a></li>
+  </ul>
+
+  <h3>Environment</h3>
+
+  <ul>
+    <li><a href="https://www.ti.com/product/TMP103" target="_blank">Texas Instruments TMP103</a> (Temperature)</li>
+    <li><a href="https://www.st.com/content/st_com/en/products/mems-and-sensors/pressure-sensors/lps25hb.html" target="_blank">ST LPS25H</a> (Pressure)</li>
+  </ul>
+
+  <h3>Bioimpedance</h3>
+
+  <ul>
+    <li><a href="https://www.analog.com/en/products/ad5940.html" target="_blank">Analog Devices AD5940</a></li>
+  </ul>
+</section>
+
+<footer>
+  <small>© Copyright 2020, MC10, Inc.</small>
+</footer>
+
+</div>
+
+</body>
+
+</html>
