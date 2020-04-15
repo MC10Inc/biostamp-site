@@ -95,7 +95,7 @@ p, li {
 }
 
 .hero {
-  min-height: 350px;
+  min-height: 350px !important;
   background-image: url(../img/hero.jpg);
   background-size: cover;
   background-position: center bottom;
