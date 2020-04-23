@@ -463,9 +463,15 @@ var SensorConfig = exports.SensorConfig = function () {
       name: "AFE",
       opts: [{
         key: "mode",
-        values: [AFE4900Mode.ECG, AFE4900Mode.PPG, AFE4900Mode.PTT],
+        values: [AFE4900Mode.ECG, AFE4900Mode.PPG, AFE4900Mode.PTT, AFE4900Mode.SPO2],
         tx: function tx(n) {
-          return ["ECG", "PPG", "PTT"][n - 1];
+          return ["ECG", "PPG", "PTT", "SpO2"][n - 1];
+        }
+      }, {
+        key: "samplingPeriodUs",
+        values: [10000, 4000, 2000],
+        tx: function tx(n) {
+          return 1000000 / n + "Hz";
         }
       }, {
         key: "ecgGain",
@@ -474,7 +480,7 @@ var SensorConfig = exports.SensorConfig = function () {
           return "Gain " + [2, 3, 4, 5, 6, 9, 12][n - 1];
         },
         use: function use(value) {
-          return value.mode !== AFE4900Mode.PPG;
+          return value.mode !== AFE4900Mode.PPG && value.mode !== AFE4900Mode.SPO2;
         }
       }, {
         key: "color",
@@ -483,7 +489,7 @@ var SensorConfig = exports.SensorConfig = function () {
           return ["Green", "Red", "Infrared"][n - 1];
         },
         use: function use(value) {
-          return value.mode !== AFE4900Mode.ECG;
+          return value.mode !== AFE4900Mode.ECG && value.mode !== AFE4900Mode.SPO2;
         }
       }, {
         key: "photodiode",
@@ -492,14 +498,15 @@ var SensorConfig = exports.SensorConfig = function () {
           return ["PD1", "PD2"][n - 1];
         },
         use: function use(value) {
-          return value.mode !== AFE4900Mode.ECG;
+          return value.mode !== AFE4900Mode.ECG && value.mode !== AFE4900Mode.SPO2;
         }
       }],
       value: {
         mode: AFE4900Mode.ECG,
         ecgGain: AFE4900ECGGain.GAIN_2,
         color: AFE4900Color.RED,
-        photodiode: AFE4900Photodiode.PD1
+        photodiode: AFE4900Photodiode.PD1,
+        samplingPeriodUs: 4000
       },
       engaged: false,
       signals: function signals(value) {
@@ -510,6 +517,8 @@ var SensorConfig = exports.SensorConfig = function () {
             return [[{ label: "Ambient", color: GRAY }, { label: "LED", color: BLUE }], [{ label: "Ambient", color: GRAY }, { label: "LED", color: BLUE }, { label: "LED-Ambient", color: PINK }]];
           case AFE4900Mode.PTT:
             return [[{ label: "Millivolts", color: ORANGE }], [{ label: "PPG", color: PURPLE }]];
+          case AFE4900Mode.SPO2:
+            return [[{ label: "SpO2", color: RED }]];
         }
       },
       parse: function parse(value, idx) {
@@ -520,6 +529,7 @@ var SensorConfig = exports.SensorConfig = function () {
               return packet.length ? packet[idx] : packet;
             };
           case AFE4900Mode.PPG:
+          case AFE4900Mode.SPO2:
             return function (packet) {
               return packet;
             };
@@ -1438,6 +1448,8 @@ var _Projection = require("js/widget/Projection");
 
 var _AFE4900PPG = require("js/widget/AFE4900PPG");
 
+var _AFE4900SpO = require("js/widget/AFE4900SpO2");
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
@@ -1448,6 +1460,8 @@ var _mc$widgets = mc.widgets,
     Toggle = _mc$widgets.Toggle,
     IconButton = _mc$widgets.IconButton,
     Drop = _mc$widgets.Drop;
+var _BiostampSensor = BiostampSensor,
+    AFE4900Mode = _BiostampSensor.AFE4900Mode;
 
 
 var config = new _SensorConfig.SensorConfig();
@@ -1850,7 +1864,7 @@ var SensorView = exports.SensorView = function (_React$Component) {
 
       if (config.isEngaged("afe4900")) {
         commands.push(function () {
-          return sensor.startStreaming(BiostampSensor.StreamingType.AFE4900, function (packet) {
+          return sensor.startStreaming(BiostampSensor.StreamingType.AFE4900, function (packet, ts) {
             emitter.emit("afe4900", packet);
           });
         });
@@ -2031,6 +2045,45 @@ var SensorView = exports.SensorView = function (_React$Component) {
 
       var ops = [{ label: "Blink LED", fn: this.blinkLeds }, { label: "Set time", fn: this.setTime }, { label: "Get time", fn: this.alertTime }, { label: "Get temperature", fn: this.alertTemp }, { label: "Get pressure", fn: this.alertPressure }, { label: "List recordings", fn: this.openRecordingsView }, { label: "Clear all recordings", fn: this.clearAllRecordings }, { label: "Upload firmware", fn: this.pickFile }, { label: "Reset", fn: this.reset }, { label: "Power off", fn: this.powerOff }, { label: "Disconnect", fn: this.disconnect }];
 
+      function sensorPanelForFeature(feature) {
+        var drop = null;
+
+        if (feature.id === "afe4900" && feature.engaged) {
+          if (feature.value.mode !== AFE4900Mode.ECG) {
+            var panel = feature.value.mode === AFE4900Mode.SPO2 ? _AFE4900SpO.AFE4900SpO2 : _AFE4900PPG.AFE4900PPG;
+
+            drop = React.createElement(
+              Drop,
+              { align: "right" },
+              React.createElement(IconButton, { icon: "configure" }),
+              React.createElement(
+                "div",
+                { className: "mc-drop-content" },
+                React.createElement(panel, {
+                  sensor: sensor,
+                  emitter: emitter,
+                  sensing: sensing,
+                  busy: busy,
+                  setBusy: this.setBusy.bind(this)
+                })
+              )
+            );
+          }
+        }
+
+        return React.createElement(
+          _SensorPanel.SensorPanel,
+          {
+            key: feature.id,
+            emitter: emitter,
+            feature: feature,
+            disabled: sensing,
+            onToggleFeature: this.onToggleFeature.bind(this),
+            onEditFeature: this.onEditFeature.bind(this) },
+          drop
+        );
+      }
+
       return React.createElement(
         "div",
         null,
@@ -2118,33 +2171,7 @@ var SensorView = exports.SensorView = function (_React$Component) {
             React.createElement(
               "div",
               null,
-              config.features.map(function (feature) {
-                return React.createElement(
-                  _SensorPanel.SensorPanel,
-                  {
-                    key: feature.id,
-                    emitter: emitter,
-                    feature: feature,
-                    disabled: sensing,
-                    onToggleFeature: _this17.onToggleFeature.bind(_this17),
-                    onEditFeature: _this17.onEditFeature.bind(_this17) },
-                  feature.id === "afe4900" && feature.engaged && feature.value.mode !== 1 ? React.createElement(
-                    Drop,
-                    { align: "right" },
-                    React.createElement(IconButton, { icon: "configure" }),
-                    React.createElement(
-                      "div",
-                      { className: "mc-drop-content" },
-                      React.createElement(_AFE4900PPG.AFE4900PPG, {
-                        sensor: sensor,
-                        emitter: emitter,
-                        setBusy: _this17.setBusy.bind(_this17),
-                        sensing: sensing,
-                        busy: busy })
-                    )
-                  ) : null
-                );
-              }),
+              config.features.map(sensorPanelForFeature.bind(this)),
               React.createElement(
                 "button",
                 { onClick: this.copyConfig.bind(this) },
@@ -2501,7 +2528,7 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
               min: 0,
               max: 255,
               value: ledCurrent,
-              label: (ledCurrent * 100 / 255).toFixed(1) + "mA (" + ledCurrent + ")",
+              label: (ledCurrent * 50 / 255).toFixed(1) + "mA (" + ledCurrent + ")",
               onChange: this.setLedCurrent.bind(this) })
           ),
           React.createElement(
@@ -2529,6 +2556,425 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
   }]);
 
   return AFE4900PPG;
+}(React.Component);
+
+});
+
+require.register("js/widget/AFE4900SpO2.js", function(exports, require, module) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var _mc$widgets = mc.widgets,
+    IconButton = _mc$widgets.IconButton,
+    Slider = _mc$widgets.Slider,
+    Check = _mc$widgets.Check;
+var _BiostampSensor = BiostampSensor,
+    AFE4900OffdacScale = _BiostampSensor.AFE4900OffdacScale,
+    AFE4900TIAGain = _BiostampSensor.AFE4900TIAGain;
+
+var AFE4900SpO2 = exports.AFE4900SpO2 = function (_React$Component) {
+  _inherits(AFE4900SpO2, _React$Component);
+
+  function AFE4900SpO2(props) {
+    _classCallCheck(this, AFE4900SpO2);
+
+    var _this = _possibleConstructorReturn(this, (AFE4900SpO2.__proto__ || Object.getPrototypeOf(AFE4900SpO2)).call(this, props));
+
+    _this.state = {
+      ledCurrent: 12,
+      ledCurrentIr: 12,
+      offdacCurrent: 0,
+      offdacCurrentIr: 0,
+      offdacScale: AFE4900OffdacScale.OFFDAC_SCALE_1X,
+      tiaGain: AFE4900TIAGain.TIA_GAIN_50KOHM,
+      tiaGainIr: AFE4900TIAGain.TIA_GAIN_50KOHM,
+      photodiodeDisconnect: false
+    };
+    return _this;
+  }
+
+  _createClass(AFE4900SpO2, [{
+    key: "setLedCurrent",
+    value: function setLedCurrent(ledCurrent) {
+      this.setState({ ledCurrent: ledCurrent });
+    }
+  }, {
+    key: "setLedCurrentIr",
+    value: function setLedCurrentIr(ledCurrentIr) {
+      this.setState({ ledCurrentIr: ledCurrentIr });
+    }
+  }, {
+    key: "setOffdacCurrent",
+    value: function setOffdacCurrent(offdacCurrent) {
+      this.setState({ offdacCurrent: offdacCurrent });
+    }
+  }, {
+    key: "setOffdacCurrentIr",
+    value: function setOffdacCurrentIr(offdacCurrentIr) {
+      this.setState({ offdacCurrentIr: offdacCurrentIr });
+    }
+  }, {
+    key: "setOffdacScale",
+    value: function setOffdacScale(evt) {
+      var offdacScale = parseInt(evt.target.value);
+
+      this.setState({ offdacScale: offdacScale });
+    }
+  }, {
+    key: "setTiaGain",
+    value: function setTiaGain(evt) {
+      var tiaGain = parseInt(evt.target.value);
+
+      this.setState({ tiaGain: tiaGain });
+    }
+  }, {
+    key: "setTiaGainIr",
+    value: function setTiaGainIr(evt) {
+      var tiaGainIr = parseInt(evt.target.value);
+
+      this.setState({ tiaGainIr: tiaGainIr });
+    }
+  }, {
+    key: "setPhotodiodeDisconnect",
+    value: function setPhotodiodeDisconnect(checked) {
+      var photodiodeDisconnect = checked;
+
+      this.setState({ photodiodeDisconnect: photodiodeDisconnect });
+    }
+  }, {
+    key: "offdacScaleFactor",
+    value: function offdacScaleFactor() {
+      var offdacScale = this.state.offdacScale;
+
+      var s = void 0;
+
+      if (offdacScale === AFE4900OffdacScale.OFFDAC_SCALE_8X) {
+        s = 8;
+      } else if (offdacScale === AFE4900OffdacScale.OFFDAC_SCALE_4X) {
+        s = 4;
+      } else if (offdacScale === AFE4900OffdacScale.OFFDAC_SCALE_2X) {
+        s = 2;
+      } else {
+        s = 1;
+      }
+
+      return s * 15.75;
+    }
+  }, {
+    key: "applyConfig",
+    value: function applyConfig(evt) {
+      var _props = this.props,
+          sensor = _props.sensor,
+          setBusy = _props.setBusy;
+
+
+      var config = this.state;
+
+      setBusy(true);
+
+      return sensor.afe4900DynamicConfig(config).then(function () {
+        setBusy(false);
+      });
+    }
+  }, {
+    key: "render",
+    value: function render() {
+      var _props2 = this.props,
+          busy = _props2.busy,
+          sensing = _props2.sensing;
+      var _state = this.state,
+          ledCurrent = _state.ledCurrent,
+          ledCurrentIr = _state.ledCurrentIr,
+          offdacCurrent = _state.offdacCurrent,
+          offdacCurrentIr = _state.offdacCurrentIr,
+          offdacScale = _state.offdacScale,
+          tiaGain = _state.tiaGain,
+          tiaGainIr = _state.tiaGainIr,
+          photodiodeDisconnect = _state.photodiodeDisconnect;
+
+
+      return React.createElement(
+        "div",
+        { className: "eng-afe4900-ppg" },
+        React.createElement(
+          "ul",
+          null,
+          React.createElement(
+            "li",
+            null,
+            React.createElement(
+              "label",
+              null,
+              "TIA Gain R",
+              React.createElement(
+                "sub",
+                null,
+                "F"
+              ),
+              " Red"
+            ),
+            React.createElement(
+              "select",
+              { value: tiaGain, onChange: this.setTiaGain.bind(this) },
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_10KOHM },
+                "10kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_25KOHM },
+                "25kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_50KOHM },
+                "50kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_100KOHM },
+                "100kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_250KOHM },
+                "250kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_500KOHM },
+                "500kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_1000KOHM },
+                "1000kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_1500KOHM },
+                "1500kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_2000KOHM },
+                "2000kΩ"
+              )
+            )
+          ),
+          React.createElement(
+            "li",
+            null,
+            React.createElement(
+              "label",
+              null,
+              "TIA Gain R",
+              React.createElement(
+                "sub",
+                null,
+                "F"
+              ),
+              " Infrared"
+            ),
+            React.createElement(
+              "select",
+              { value: tiaGainIr, onChange: this.setTiaGainIr.bind(this) },
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_10KOHM },
+                "10kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_25KOHM },
+                "25kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_50KOHM },
+                "50kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_100KOHM },
+                "100kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_250KOHM },
+                "250kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_500KOHM },
+                "500kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_1000KOHM },
+                "1000kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_1500KOHM },
+                "1500kΩ"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900TIAGain.TIA_GAIN_2000KOHM },
+                "2000kΩ"
+              )
+            )
+          ),
+          React.createElement(
+            "li",
+            null,
+            React.createElement(
+              "label",
+              null,
+              "Offset DAC scale"
+            ),
+            React.createElement(
+              "select",
+              { value: offdacScale, onChange: this.setOffdacScale.bind(this) },
+              React.createElement(
+                "option",
+                { value: AFE4900OffdacScale.OFFDAC_SCALE_1X },
+                "1x"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900OffdacScale.OFFDAC_SCALE_2X },
+                "2x"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900OffdacScale.OFFDAC_SCALE_4X },
+                "4x"
+              ),
+              React.createElement(
+                "option",
+                { value: AFE4900OffdacScale.OFFDAC_SCALE_8X },
+                "8x"
+              )
+            )
+          ),
+          React.createElement(
+            "li",
+            null,
+            React.createElement(
+              "label",
+              null,
+              "I",
+              React.createElement(
+                "sub",
+                null,
+                "OFFDAC"
+              ),
+              " Red"
+            ),
+            React.createElement(Slider, {
+              min: -127,
+              max: 127,
+              value: offdacCurrent,
+              label: (offdacCurrent * this.offdacScaleFactor() / 127).toFixed(2) + "µA (" + offdacCurrent + ")",
+              onChange: this.setOffdacCurrent.bind(this) })
+          ),
+          React.createElement(
+            "li",
+            null,
+            React.createElement(
+              "label",
+              null,
+              "I",
+              React.createElement(
+                "sub",
+                null,
+                "OFFDAC"
+              ),
+              " Infrared"
+            ),
+            React.createElement(Slider, {
+              min: -127,
+              max: 127,
+              value: offdacCurrentIr,
+              label: (offdacCurrentIr * this.offdacScaleFactor() / 127).toFixed(2) + "µA (" + offdacCurrentIr + ")",
+              onChange: this.setOffdacCurrentIr.bind(this) })
+          ),
+          React.createElement(
+            "li",
+            null,
+            React.createElement(
+              "label",
+              null,
+              "I",
+              React.createElement(
+                "sub",
+                null,
+                "LED"
+              ),
+              " Red"
+            ),
+            React.createElement(Slider, {
+              min: 0,
+              max: 255,
+              value: ledCurrent,
+              label: (ledCurrent * 50 / 255).toFixed(1) + "mA (" + ledCurrent + ")",
+              onChange: this.setLedCurrent.bind(this) })
+          ),
+          React.createElement(
+            "li",
+            null,
+            React.createElement(
+              "label",
+              null,
+              "I",
+              React.createElement(
+                "sub",
+                null,
+                "LED"
+              ),
+              " Infrared"
+            ),
+            React.createElement(Slider, {
+              min: 0,
+              max: 255,
+              value: ledCurrentIr,
+              label: (ledCurrentIr * 50 / 255).toFixed(1) + "mA (" + ledCurrentIr + ")",
+              onChange: this.setLedCurrentIr.bind(this) })
+          ),
+          React.createElement(
+            "li",
+            null,
+            React.createElement(Check, {
+              label: "Photodiode Disconnect",
+              checked: photodiodeDisconnect,
+              size: "small",
+              onCheck: this.setPhotodiodeDisconnect.bind(this) })
+          )
+        ),
+        React.createElement(
+          "button",
+          { disabled: busy, onClick: this.applyConfig.bind(this) },
+          "Set"
+        )
+      );
+    }
+  }]);
+
+  return AFE4900SpO2;
 }(React.Component);
 
 });
@@ -2755,6 +3201,258 @@ var Projection = exports.Projection = function (_React$Component) {
 
 });
 
+require.register("js/widget/SPO2Stream.js", function(exports, require, module) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.SPO2Stream = undefined;
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _SensorStream = require("js/widget/SensorStream");
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var Check = mc.widgets.Check;
+var _mc$ui$colors = mc.ui.colors,
+    GRAY = _mc$ui$colors.GRAY,
+    RED = _mc$ui$colors.RED,
+    TEAL = _mc$ui$colors.TEAL,
+    GREEN = _mc$ui$colors.GREEN;
+
+
+var NSAMPLES = 1000;
+var COLOR_RED_CH = RED;
+var COLOR_IR_CH = TEAL;
+
+function zip(cols) {
+  var rows = new Array(cols[0].length);
+
+  var _loop = function _loop(i) {
+    rows[i] = cols.map(function (col) {
+      return col[i];
+    });
+  };
+
+  for (var i = 0; i < cols[0].length; i++) {
+    _loop(i);
+  }
+
+  return rows;
+}
+
+function minmax(a) {
+  var min = Number.POSITIVE_INFINITY;
+  var max = Number.NEGATIVE_INFINITY;
+
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] < min) {
+      min = a[i];
+    }
+    if (a[i] > max) {
+      max = a[i];
+    }
+  }
+
+  return [min, max];
+}
+
+var FS = 250;
+var WIN = 5 * FS;
+
+var iirCalc = Fili.CalcCascades(); // eslint-disable-line
+var firCalc = Fili.FirCoeffs(); // eslint-disable-line
+
+var ppgBandpass = firCalc.bandpass({
+  order: 500,
+  Fs: FS,
+  F1: 0.5,
+  F2: 5
+});
+
+var ppgDcLevel = iirCalc.lowpass({
+  order: 3,
+  characteristic: "butterworth",
+  Fs: FS,
+  Fc: 0.3
+});
+
+function peakToPeak(s) {
+  return s.max() - s.min();
+}
+
+function rms(s) {
+  return Math.sqrt(s.subtract(s.mean()).pow(2).mean());
+}
+
+var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
+  _inherits(SPO2Stream, _React$Component);
+
+  function SPO2Stream(props) {
+    _classCallCheck(this, SPO2Stream);
+
+    var _this = _possibleConstructorReturn(this, (SPO2Stream.__proto__ || Object.getPrototypeOf(SPO2Stream)).call(this, props));
+
+    _this.lastTimestamp = 0;
+
+    _this.state = {
+      redSamples: [],
+      irSamples: [],
+      redSmoothedSamples: [],
+      irSmoothedSamples: [],
+      smoothing: true,
+      redText: "",
+      irText: ""
+    };
+
+    _this.redBandpassFilter = new Fili.FirFilter(ppgBandpass);
+    _this.irBandpassFilter = new Fili.FirFilter(ppgBandpass);
+    _this.redDcFilter = new Fili.IirFilter(ppgDcLevel);
+    _this.irDcFilter = new Fili.IirFilter(ppgDcLevel);
+    return _this;
+  }
+
+  _createClass(SPO2Stream, [{
+    key: "componentDidMount",
+    value: function componentDidMount() {
+      var emitter = this.props.emitter;
+
+
+      emitter.on("afe4900", this.setPacket, this);
+    }
+  }, {
+    key: "componentWillUnmount",
+    value: function componentWillUnmount() {
+      var _props = this.props,
+          emitter = _props.emitter,
+          feature = _props.feature;
+
+
+      emitter.off("afe4900", this.setPacket);
+    }
+  }, {
+    key: "setPacket",
+    value: function setPacket(packet) {
+      var _state = this.state,
+          redSamples = _state.redSamples,
+          irSamples = _state.irSamples,
+          redSmoothedSamples = _state.redSmoothedSamples,
+          irSmoothedSamples = _state.irSmoothedSamples;
+
+
+      var newRed = packet.map(function (p) {
+        return p[0];
+      });
+      var newIr = packet.map(function (p) {
+        return p[1];
+      });
+      var smoothedRed = this.redBandpassFilter.multiStep(newRed);
+      var smoothedIr = this.irBandpassFilter.multiStep(newIr);
+      var dcRed = this.redDcFilter.multiStep(newRed);
+      var dcIr = this.irDcFilter.multiStep(newIr);
+      var redDcLevel = dcRed[dcRed.length - 1];
+      var irDcLevel = dcIr[dcIr.length - 1];
+      var newState = {
+        redSamples: redSamples.concat(newRed).slice(-NSAMPLES),
+        irSamples: irSamples.concat(newIr).slice(-NSAMPLES),
+        redSmoothedSamples: redSmoothedSamples.concat(smoothedRed).slice(-NSAMPLES),
+        irSmoothedSamples: irSmoothedSamples.concat(smoothedIr).slice(-NSAMPLES)
+      };
+
+      var redWin = nj.array(newState.redSmoothedSamples.slice(-WIN));
+      var irWin = nj.array(newState.irSmoothedSamples.slice(-WIN));
+      var redPeak = peakToPeak(redWin);
+      var irPeak = peakToPeak(irWin);
+      var redRms = rms(redWin);
+      var irRms = rms(irWin);
+      var r = redRms / redDcLevel / (irRms / irDcLevel);
+
+      newState.redText = this.ppgDescribe(redPeak, redRms, redDcLevel) + "       R=" + r.toFixed(3);
+      newState.irText = this.ppgDescribe(irPeak, irRms, irDcLevel);
+
+      this.setState(newState);
+    }
+  }, {
+    key: "ppgDescribe",
+    value: function ppgDescribe(peak, rms, dc) {
+      var values = [];
+
+      values.push(["DC", dc]);
+      values.push(["P-P", peak]);
+      values.push(["RMS", rms]);
+
+      return values.map(function (v) {
+        return v[0] + ":" + v[1].toFixed(0).padStart(8, " ");
+      }).join("   ");
+    }
+  }, {
+    key: "setSmoothing",
+    value: function setSmoothing(checked) {
+      var smoothing = checked;
+
+      this.setState({ smoothing: smoothing });
+    }
+  }, {
+    key: "render",
+    value: function render() {
+      var smoothing = this.state.smoothing;
+
+
+      var bullet = mc.charts.Legend.DOT;
+
+      var items = [{ label: "Red", color: COLOR_RED_CH, bullet: bullet }, { label: "Infrared", color: COLOR_IR_CH, bullet: bullet }];
+
+      // First plot is red channel autoscaled to show AC signal
+      // Second plot is infrared channel autoscaled to show AC signal
+      // Third plot is both red and infrared, with fixed scale to show DC level
+      // Full scale of the ADC is 22 bits corresponding to +/-1.2v
+      // Even though PPG signal can be made negative by using offset DAC, that
+      // would not normally be done so we only show the positive range from 0 to
+      // 1^21 codes.
+      // Even though ADC full scale is 1.2v, for PPG the TIA output should not
+      // exceed 1.0v, which is shown with a dashed line.
+
+      return React.createElement(
+        "div",
+        null,
+        React.createElement(_SensorStream.SensorStream, {
+          packets: this.state.smoothing ? this.state.redSmoothedSamples : this.state.redSamples,
+          colors: [COLOR_RED_CH],
+          numPoints: NSAMPLES,
+          plotText: this.state.redText }),
+        React.createElement(_SensorStream.SensorStream, {
+          packets: this.state.smoothing ? this.state.irSmoothedSamples : this.state.irSamples,
+          colors: [COLOR_IR_CH],
+          numPoints: NSAMPLES,
+          plotText: this.state.irText }),
+        React.createElement(_SensorStream.SensorStream, {
+          packets: zip([this.state.redSamples, this.state.irSamples]),
+          colors: [COLOR_RED_CH, COLOR_IR_CH],
+          numPoints: NSAMPLES,
+          fixedExtent: [0, 1 << 21],
+          tight: true,
+          horizLines: [{ y: (1 << 21) * 1.0 / 1.2, color: GRAY }] }),
+        React.createElement(mc.charts.Legend, { items: items }),
+        React.createElement(Check, {
+          label: "Smoothing",
+          checked: smoothing,
+          size: "small",
+          onCheck: this.setSmoothing.bind(this) })
+      );
+    }
+  }]);
+
+  return SPO2Stream;
+}(React.Component);
+
+});
+
 require.register("js/widget/SensorPanel.js", function(exports, require, module) {
 "use strict";
 
@@ -2771,6 +3469,8 @@ var _SensorStream = require("js/widget/SensorStream");
 
 var _PPGStream = require("js/widget/PPGStream");
 
+var _SPO2Stream = require("js/widget/SPO2Stream");
+
 var _PPGMinusAmbientStream = require("js/widget/PPGMinusAmbientStream");
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -2778,6 +3478,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var _BiostampSensor = BiostampSensor,
+    AFE4900Mode = _BiostampSensor.AFE4900Mode;
 
 var SensorPanel = exports.SensorPanel = function (_React$Component) {
   _inherits(SensorPanel, _React$Component);
@@ -2830,7 +3533,7 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
           value = feature.value;
 
 
-      if (id === "afe4900" && value.mode === "PPG") {
+      if (id === "afe4900" && value.mode === AFE4900Mode.PPG) {
         return idx === 0 ? _PPGStream.PPGStream : _PPGMinusAmbientStream.PPGMinusAmbientStream;
       }
 
@@ -2859,17 +3562,45 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
   }, {
     key: "render",
     value: function render() {
-      var _this2 = this;
+      var _this3 = this;
 
       var _props3 = this.props,
           feature = _props3.feature,
           disabled = _props3.disabled,
+          emitter = _props3.emitter,
           children = _props3.children;
       var packets = this.state.packets;
 
 
       var bullet = mc.charts.Legend.DOT;
       var value = feature.value;
+
+      function renderFeature(feature) {
+        var _this2 = this;
+
+        if (feature.id === "afe4900" && feature.value.mode === AFE4900Mode.SPO2) {
+          return React.createElement(_SPO2Stream.SPO2Stream, { emitter: emitter });
+        }
+
+        return feature.signals(value).map(function (group, i) {
+          var data = feature.parse ? packets.map(feature.parse(value, i)) : packets;
+          var colors = group.map(function (g) {
+            return g.color;
+          });
+          var items = group.map(function (g) {
+            return _extends({}, g, { bullet: bullet });
+          });
+
+          var chart = _this2.getChartComponent(feature, i);
+
+          return React.createElement(
+            "div",
+            { key: i },
+            React.createElement(chart, { packets: data, colors: colors }),
+            React.createElement(mc.charts.Legend, { items: items })
+          );
+        });
+      }
 
       return React.createElement(
         "div",
@@ -2895,7 +3626,7 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
                   value: value[opt.key],
                   "data-applies": applies,
                   disabled: disabled || !feature.engaged || !applies,
-                  onChange: _this2.editFeature.bind(_this2, feature.id, opt.key) },
+                  onChange: _this3.editFeature.bind(_this3, feature.id, opt.key) },
                 opt.values.map(function (val) {
                   return React.createElement(
                     "option",
@@ -2912,24 +3643,7 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
               onPress: this.toggleFeature.bind(this, feature.id) })
           )
         ),
-        feature.engaged ? feature.signals(value).map(function (group, i) {
-          var data = feature.parse ? packets.map(feature.parse(value, i)) : packets;
-          var colors = group.map(function (g) {
-            return g.color;
-          });
-          var items = group.map(function (g) {
-            return _extends({}, g, { bullet: bullet });
-          });
-
-          var chart = _this2.getChartComponent(feature, i);
-
-          return React.createElement(
-            "div",
-            { key: i },
-            React.createElement(chart, { packets: data, colors: colors }),
-            React.createElement(mc.charts.Legend, { items: items })
-          );
-        }) : null
+        feature.engaged ? renderFeature.bind(this)(feature) : null
       );
     }
   }]);
@@ -3081,8 +3795,41 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
       return false;
     }
   }, {
+    key: "numPoints",
+    value: function numPoints() {
+      return this.props.numPoints || 500;
+    }
+  }, {
+    key: "points",
+    value: function points(values, min, max, width, height) {
+      var n = this.numPoints();
+
+      var p = void 0;
+      var topSpace = void 0;
+      if (this.props.tight) {
+        p = 1;
+        topSpace = 0;
+      } else {
+        p = 10;
+        topSpace = 40;
+      }
+      var h = height - topSpace;
+      var x = function x(d, i) {
+        return width * (i / n);
+      };
+      var y = function y(d, i) {
+        return topSpace + (h - p - (h - p * 2) * ((d - min) / (max - min)));
+      };
+
+      return values.map(function (d, i) {
+        return [x(d, i), y(d, i)];
+      });
+    }
+  }, {
     key: "plot",
     value: function plot() {
+      var _this2 = this;
+
       var colors = this.props.colors;
 
       var packets = this.getPackets();
@@ -3097,10 +3844,10 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
       var width = canvas.getBoundingClientRect().width * 2;
       var height = 120 * 2;
 
-      var _SensorStream$extent = SensorStream.extent(packets.flat()),
-          _SensorStream$extent2 = _slicedToArray(_SensorStream$extent, 2),
-          min = _SensorStream$extent2[0],
-          max = _SensorStream$extent2[1];
+      var _ref = this.props.fixedExtent || SensorStream.extent(packets.flat()),
+          _ref2 = _slicedToArray(_ref, 2),
+          min = _ref2[0],
+          max = _ref2[1];
 
       canvas.width = width;
       canvas.height = height;
@@ -3110,10 +3857,11 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
           return s.length ? s[i] : s;
         });
 
-        var points = SensorStream.points(values, min, max, width, height);
+        var points = _this2.points(values, min, max, width, height);
 
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
+        ctx.setLineDash([]);
         ctx.beginPath();
 
         points.forEach(function (point) {
@@ -3122,6 +3870,20 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
 
         ctx.stroke();
       });
+
+      if (this.props.horizLines) {
+        this.props.horizLines.forEach(function (horizLine) {
+          var p = _this2.points([horizLine.y], min, max, width, height);
+          var y = p[0][1];
+          ctx.strokeStyle = horizLine.color;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        });
+      }
 
       if (packets.length) {
         ctx.font = "24px sans-serif";
@@ -3140,6 +3902,9 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
   }, {
     key: "getPlotText",
     value: function getPlotText(packets) {
+      if (this.props.plotText) {
+        return this.props.plotText;
+      }
       var sample = packets[packets.length - 1];
 
       return [].concat(sample).join(", ");
@@ -3165,29 +3930,6 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
       }
 
       return [min, max];
-    }
-  }, {
-    key: "numPoints",
-    value: function numPoints() {
-      return 500;
-    }
-  }, {
-    key: "points",
-    value: function points(values, min, max, width, height) {
-      var n = this.numPoints();
-
-      var p = 10;
-      var h = height - 40;
-      var x = function x(d, i) {
-        return width * (i / n);
-      };
-      var y = function y(d, i) {
-        return 40 + (h - p - (h - p * 2) * ((d - min) / (max - min)));
-      };
-
-      return values.map(function (d, i) {
-        return [x(d, i), y(d, i)];
-      });
     }
   }]);
 
