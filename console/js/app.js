@@ -158,6 +158,38 @@ ReactDOM.render(React.createElement(_SensorView.SensorView, null), document.getE
 
 });
 
+require.register("js/util/ECGSignal.js", function(exports, require, module) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var ECGSignal = exports.ECGSignal = function () {
+  function ECGSignal(rateHz, durationSec, winSec) {
+    _classCallCheck(this, ECGSignal);
+
+    this.rateHz = rateHz;
+    this.nSamples = Math.floor(durationSec * this.rateHz);
+    this.samples = [];
+  }
+
+  _createClass(ECGSignal, [{
+    key: "update",
+    value: function update(newSamples) {
+      this.samples = this.samples.concat(newSamples).slice(-this.nSamples);
+    }
+  }]);
+
+  return ECGSignal;
+}();
+
+});
+
 require.register("js/util/PPGAnalyze.js", function(exports, require, module) {
 "use strict";
 
@@ -344,6 +376,87 @@ var PPGAnalyze = exports.PPGAnalyze = function () {
 
 });
 
+require.register("js/util/PPGSignal.js", function(exports, require, module) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var iirCalc = Fili.CalcCascades(); // eslint-disable-line
+var firCalc = Fili.FirCoeffs(); // eslint-disable-line
+
+function peakToPeak(s) {
+  return s.max() - s.min();
+}
+
+function rms(s) {
+  return Math.sqrt(s.subtract(s.mean()).pow(2).mean());
+}
+
+var PPGSignal = exports.PPGSignal = function () {
+  function PPGSignal(rateHz, durationSec, winSec) {
+    _classCallCheck(this, PPGSignal);
+
+    this.rateHz = rateHz;
+    this.nSamples = Math.floor(durationSec * this.rateHz);
+    this.calcWin = Math.floor(winSec * this.rateHz);
+    this.samples = [];
+    this.smoothed = [];
+
+    this.ppgBandpassFilter = new Fili.FirFilter(firCalc.bandpass({
+      order: 500,
+      Fs: this.rateHz,
+      F1: 0.5,
+      F2: 5
+    }));
+
+    this.ppgDcLevelFilter = new Fili.IirFilter(iirCalc.lowpass({
+      order: 3,
+      characteristic: "butterworth",
+      Fs: this.rateHz,
+      Fc: 0.3
+    }));
+  }
+
+  _createClass(PPGSignal, [{
+    key: "update",
+    value: function update(newSamples) {
+      var newSmoothed = this.ppgBandpassFilter.multiStep(newSamples);
+      this.samples = this.samples.concat(newSamples).slice(-this.nSamples);
+      this.smoothed = this.smoothed.concat(newSmoothed).slice(-this.nSamples);
+
+      var dcSamples = this.ppgDcLevelFilter.multiStep(newSamples);
+      this.dcLevel = dcSamples[dcSamples.length - 1];
+
+      var win = nj.array(this.smoothed.slice(-this.calcWin));
+      this.peakToPeak = peakToPeak(win);
+      this.rms = rms(win);
+    }
+  }, {
+    key: "describe",
+    value: function describe() {
+      var values = [];
+
+      values.push(["DC", this.dcLevel]);
+      values.push(["P-P", this.peakToPeak]);
+      values.push(["RMS", this.rms]);
+
+      return values.map(function (v) {
+        return v[0] + ":" + v[1].toFixed(0).padStart(8, " ");
+      }).join("   ");
+    }
+  }]);
+
+  return PPGSignal;
+}();
+
+});
+
 require.register("js/util/SensorConfig.js", function(exports, require, module) {
 "use strict";
 
@@ -508,33 +621,7 @@ var SensorConfig = exports.SensorConfig = function () {
         photodiode: AFE4900Photodiode.PD1,
         samplingPeriodUs: 4000
       },
-      engaged: false,
-      signals: function signals(value) {
-        switch (value.mode) {
-          case AFE4900Mode.ECG:
-            return [[{ label: "Millivolts", color: ORANGE }]];
-          case AFE4900Mode.PPG:
-            return [[{ label: "Ambient", color: GRAY }, { label: "LED", color: BLUE }], [{ label: "Ambient", color: GRAY }, { label: "LED", color: BLUE }, { label: "LED-Ambient", color: PINK }]];
-          case AFE4900Mode.PTT:
-            return [[{ label: "Millivolts", color: ORANGE }], [{ label: "PPG", color: PURPLE }]];
-          case AFE4900Mode.SPO2:
-            return [[{ label: "SpO2", color: RED }]];
-        }
-      },
-      parse: function parse(value, idx) {
-        switch (value.mode) {
-          case AFE4900Mode.ECG:
-          case AFE4900Mode.PTT:
-            return function (packet) {
-              return packet.length ? packet[idx] : packet;
-            };
-          case AFE4900Mode.PPG:
-          case AFE4900Mode.SPO2:
-            return function (packet) {
-              return packet;
-            };
-        }
-      }
+      engaged: false
     }, {
       id: "environment",
       name: "Environment",
@@ -2979,17 +3066,19 @@ var AFE4900SpO2 = exports.AFE4900SpO2 = function (_React$Component) {
 
 });
 
-require.register("js/widget/PPGMinusAmbientStream.js", function(exports, require, module) {
+require.register("js/widget/ECGStream.js", function(exports, require, module) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.PPGMinusAmbientStream = undefined;
+exports.ECGStream = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _PPGStream2 = require("js/widget/PPGStream");
+var _SensorStream = require("js/widget/SensorStream");
+
+var _ECGSignal = require("js/util/ECGSignal");
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -2997,44 +3086,106 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var PPGMinusAmbientStream = exports.PPGMinusAmbientStream = function (_PPGStream) {
-  _inherits(PPGMinusAmbientStream, _PPGStream);
+var Check = mc.widgets.Check;
+var ORANGE = mc.ui.colors.ORANGE;
 
-  function PPGMinusAmbientStream() {
-    _classCallCheck(this, PPGMinusAmbientStream);
 
-    return _possibleConstructorReturn(this, (PPGMinusAmbientStream.__proto__ || Object.getPrototypeOf(PPGMinusAmbientStream)).apply(this, arguments));
+var COLOR_ECG = ORANGE;
+
+var DURATION_SEC = 10;
+
+var ECGStream = exports.ECGStream = function (_React$Component) {
+  _inherits(ECGStream, _React$Component);
+
+  function ECGStream(props) {
+    _classCallCheck(this, ECGStream);
+
+    var _this = _possibleConstructorReturn(this, (ECGStream.__proto__ || Object.getPrototypeOf(ECGStream)).call(this, props));
+
+    _this.initSignals();
+
+    _this.state = {
+      nSamples: _this.ecgSignal.nSamples,
+      ecgSamples: []
+    };
+    return _this;
   }
 
-  _createClass(PPGMinusAmbientStream, [{
-    key: "getPackets",
-    value: function getPackets() {
-      var packets = this.props.packets;
+  _createClass(ECGStream, [{
+    key: "componentDidMount",
+    value: function componentDidMount() {
+      var emitter = this.props.emitter;
 
-      var p = nj.array(packets);
 
-      var led = p.slice(null, [1, 2]);
-      var amb = p.slice(null, [0, 1]);
-      var lma = led.subtract(amb);
-
-      led.subtract(led.mean(), false);
-      amb.subtract(amb.mean(), false);
-      lma.subtract(lma.mean(), false);
-
-      return nj.concatenate([amb, led, lma]).tolist();
+      emitter.on("afe4900", this.setPacket, this);
     }
   }, {
-    key: "getPlotText",
-    value: function getPlotText(packets) {
-      var s = nj.array(packets);
-      var lmaText = this.ppgDescribe(s.slice(null, [2, 3]), false);
+    key: "componentWillUnmount",
+    value: function componentWillUnmount() {
+      var _props = this.props,
+          emitter = _props.emitter,
+          feature = _props.feature;
 
-      return "LED-Ambient " + lmaText;
+
+      emitter.off("afe4900", this.setPacket);
+    }
+  }, {
+    key: "componentDidUpdate",
+    value: function componentDidUpdate(prevProps) {
+      if (prevProps.samplingPeriodUs !== this.props.samplingPeriodUs) {
+        this.initSignals();
+      }
+    }
+  }, {
+    key: "initSignals",
+    value: function initSignals() {
+      var rateHz = 1000000 / this.props.samplingPeriodUs;
+      this.ecgSignal = new _ECGSignal.ECGSignal(rateHz, DURATION_SEC);
+      this.setState({
+        nSamples: this.ecgSignal.nSamples
+      });
+    }
+  }, {
+    key: "setPacket",
+    value: function setPacket(packet) {
+      var _this2 = this;
+
+      if (packet[0].length) {
+        this.ecgSignal.update(packet.map(function (p) {
+          return p[_this2.props.ecgIndex];
+        }));
+      } else {
+        this.ecgSignal.update(packet);
+      }
+
+      this.setState({
+        ecgSamples: this.ecgSignal.samples
+      });
+    }
+  }, {
+    key: "render",
+    value: function render() {
+      var smoothing = this.state.smoothing;
+
+
+      var bullet = mc.charts.Legend.DOT;
+
+      var items = [{ label: "Millivolts", color: COLOR_ECG, bullet: bullet }];
+
+      return React.createElement(
+        "div",
+        null,
+        React.createElement(_SensorStream.SensorStream, {
+          packets: this.state.ecgSamples,
+          colors: [COLOR_ECG],
+          numPoints: this.state.nSamples }),
+        React.createElement(mc.charts.Legend, { items: items })
+      );
     }
   }]);
 
-  return PPGMinusAmbientStream;
-}(_PPGStream2.PPGStream);
+  return ECGStream;
+}(React.Component);
 
 });
 
@@ -3048,7 +3199,9 @@ exports.PPGStream = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _SensorStream2 = require("js/widget/SensorStream");
+var _SensorStream = require("js/widget/SensorStream");
+
+var _PPGSignal = require("js/util/PPGSignal");
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -3056,63 +3209,121 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var PPGStream = exports.PPGStream = function (_SensorStream) {
-  _inherits(PPGStream, _SensorStream);
+var Check = mc.widgets.Check;
+var BLUE = mc.ui.colors.BLUE;
 
-  function PPGStream() {
+
+var COLOR_PPG = BLUE;
+
+var DURATION_SEC = 10;
+var WIN_SEC = 5;
+
+var PPGStream = exports.PPGStream = function (_React$Component) {
+  _inherits(PPGStream, _React$Component);
+
+  function PPGStream(props) {
     _classCallCheck(this, PPGStream);
 
-    return _possibleConstructorReturn(this, (PPGStream.__proto__ || Object.getPrototypeOf(PPGStream)).apply(this, arguments));
+    var _this = _possibleConstructorReturn(this, (PPGStream.__proto__ || Object.getPrototypeOf(PPGStream)).call(this, props));
+
+    _this.initSignals();
+
+    _this.state = {
+      nSamples: _this.ppgSignal.nSamples,
+      ppgSamples: [],
+      ppgSmoothedSamples: [],
+      smoothing: true,
+      ppgText: ""
+    };
+    return _this;
   }
 
   _createClass(PPGStream, [{
-    key: "getPackets",
-    value: function getPackets() {
-      var packets = this.props.packets;
+    key: "componentDidMount",
+    value: function componentDidMount() {
+      var emitter = this.props.emitter;
 
 
-      return packets.map(function (p) {
-        return [p[1], p[0]];
+      emitter.on("afe4900", this.setPacket, this);
+    }
+  }, {
+    key: "componentWillUnmount",
+    value: function componentWillUnmount() {
+      var _props = this.props,
+          emitter = _props.emitter,
+          feature = _props.feature;
+
+
+      emitter.off("afe4900", this.setPacket);
+    }
+  }, {
+    key: "componentDidUpdate",
+    value: function componentDidUpdate(prevProps) {
+      if (prevProps.samplingPeriodUs !== this.props.samplingPeriodUs) {
+        this.initSignals();
+      }
+    }
+  }, {
+    key: "initSignals",
+    value: function initSignals() {
+      var rateHz = 1000000 / this.props.samplingPeriodUs;
+      this.ppgSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC);
+      this.setState({
+        nSamples: this.ppgSignal.nSamples
       });
     }
   }, {
-    key: "ppgDescribe",
-    value: function ppgDescribe(s, includeMean) {
-      var values = [];
+    key: "setPacket",
+    value: function setPacket(packet) {
+      var _this2 = this;
 
-      if (includeMean) {
-        values.push(["Mean", s.mean()]);
-      }
+      this.ppgSignal.update(packet.map(function (p) {
+        return p[_this2.props.ppgIndex];
+      }));
 
-      values.push(["P-P", s.max() - s.min()]);
-      values.push(["RMS", Math.sqrt(s.subtract(s.mean()).pow(2).mean())]);
-
-      return values.map(function (v) {
-        return v[0] + ":" + v[1].toFixed(0).padStart(8, " ");
-      }).join("   ");
+      this.setState({
+        ppgSamples: this.ppgSignal.samples,
+        ppgSmoothedSamples: this.ppgSignal.smoothed,
+        ppgText: this.ppgSignal.describe()
+      });
     }
   }, {
-    key: "getPlotText",
-    value: function getPlotText(packets) {
-      if (packets.length < 2) {
-        return "...";
-      }
+    key: "setSmoothing",
+    value: function setSmoothing(checked) {
+      var smoothing = checked;
 
-      var s = nj.array(packets);
-      var ppgText = this.ppgDescribe(s.slice(null, [1, 2]), true);
-      var ambText = this.ppgDescribe(s.slice(null, [0, 1]), true);
-
-      return "LED " + ppgText + "       " + "Ambient " + ambText;
+      this.setState({ smoothing: smoothing });
     }
-  }], [{
-    key: "numPoints",
-    value: function numPoints() {
-      return 1000;
+  }, {
+    key: "render",
+    value: function render() {
+      var smoothing = this.state.smoothing;
+
+
+      var bullet = mc.charts.Legend.DOT;
+
+      var items = [{ label: "PPG", color: COLOR_PPG, bullet: bullet }];
+
+      return React.createElement(
+        "div",
+        null,
+        React.createElement(_SensorStream.SensorStream, {
+          packets: this.state.smoothing ? this.state.ppgSmoothedSamples : this.state.ppgSamples,
+          colors: [COLOR_PPG],
+          numPoints: this.state.nSamples,
+          plotText: this.state.ppgText }),
+        React.createElement(mc.charts.Legend, { items: items }),
+        React.createElement(Check, {
+          label: "Smoothing",
+          checked: smoothing,
+          size: "small",
+          onCheck: this.setSmoothing.bind(this) })
+      );
     }
   }]);
 
   return PPGStream;
-}(_SensorStream2.SensorStream);
+}(React.Component);
 
 });
 
@@ -3213,6 +3424,8 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 var _SensorStream = require("js/widget/SensorStream");
 
+var _PPGSignal = require("js/util/PPGSignal");
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
@@ -3227,9 +3440,11 @@ var _mc$ui$colors = mc.ui.colors,
     GREEN = _mc$ui$colors.GREEN;
 
 
-var NSAMPLES = 1000;
 var COLOR_RED_CH = RED;
 var COLOR_IR_CH = TEAL;
+
+var DURATION_SEC = 10;
+var WIN_SEC = 5;
 
 function zip(cols) {
   var rows = new Array(cols[0].length);
@@ -3247,50 +3462,6 @@ function zip(cols) {
   return rows;
 }
 
-function minmax(a) {
-  var min = Number.POSITIVE_INFINITY;
-  var max = Number.NEGATIVE_INFINITY;
-
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] < min) {
-      min = a[i];
-    }
-    if (a[i] > max) {
-      max = a[i];
-    }
-  }
-
-  return [min, max];
-}
-
-var FS = 250;
-var WIN = 5 * FS;
-
-var iirCalc = Fili.CalcCascades(); // eslint-disable-line
-var firCalc = Fili.FirCoeffs(); // eslint-disable-line
-
-var ppgBandpass = firCalc.bandpass({
-  order: 500,
-  Fs: FS,
-  F1: 0.5,
-  F2: 5
-});
-
-var ppgDcLevel = iirCalc.lowpass({
-  order: 3,
-  characteristic: "butterworth",
-  Fs: FS,
-  Fc: 0.3
-});
-
-function peakToPeak(s) {
-  return s.max() - s.min();
-}
-
-function rms(s) {
-  return Math.sqrt(s.subtract(s.mean()).pow(2).mean());
-}
-
 var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
   _inherits(SPO2Stream, _React$Component);
 
@@ -3299,9 +3470,10 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
 
     var _this = _possibleConstructorReturn(this, (SPO2Stream.__proto__ || Object.getPrototypeOf(SPO2Stream)).call(this, props));
 
-    _this.lastTimestamp = 0;
+    _this.initSignals();
 
     _this.state = {
+      nSamples: _this.redSignal.nSamples,
       redSamples: [],
       irSamples: [],
       redSmoothedSamples: [],
@@ -3310,11 +3482,6 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
       redText: "",
       irText: ""
     };
-
-    _this.redBandpassFilter = new Fili.FirFilter(ppgBandpass);
-    _this.irBandpassFilter = new Fili.FirFilter(ppgBandpass);
-    _this.redDcFilter = new Fili.IirFilter(ppgDcLevel);
-    _this.irDcFilter = new Fili.IirFilter(ppgDcLevel);
     return _this;
   }
 
@@ -3337,59 +3504,42 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
       emitter.off("afe4900", this.setPacket);
     }
   }, {
-    key: "setPacket",
-    value: function setPacket(packet) {
-      var _state = this.state,
-          redSamples = _state.redSamples,
-          irSamples = _state.irSamples,
-          redSmoothedSamples = _state.redSmoothedSamples,
-          irSmoothedSamples = _state.irSmoothedSamples;
-
-
-      var newRed = packet.map(function (p) {
-        return p[0];
-      });
-      var newIr = packet.map(function (p) {
-        return p[1];
-      });
-      var smoothedRed = this.redBandpassFilter.multiStep(newRed);
-      var smoothedIr = this.irBandpassFilter.multiStep(newIr);
-      var dcRed = this.redDcFilter.multiStep(newRed);
-      var dcIr = this.irDcFilter.multiStep(newIr);
-      var redDcLevel = dcRed[dcRed.length - 1];
-      var irDcLevel = dcIr[dcIr.length - 1];
-      var newState = {
-        redSamples: redSamples.concat(newRed).slice(-NSAMPLES),
-        irSamples: irSamples.concat(newIr).slice(-NSAMPLES),
-        redSmoothedSamples: redSmoothedSamples.concat(smoothedRed).slice(-NSAMPLES),
-        irSmoothedSamples: irSmoothedSamples.concat(smoothedIr).slice(-NSAMPLES)
-      };
-
-      var redWin = nj.array(newState.redSmoothedSamples.slice(-WIN));
-      var irWin = nj.array(newState.irSmoothedSamples.slice(-WIN));
-      var redPeak = peakToPeak(redWin);
-      var irPeak = peakToPeak(irWin);
-      var redRms = rms(redWin);
-      var irRms = rms(irWin);
-      var r = redRms / redDcLevel / (irRms / irDcLevel);
-
-      newState.redText = this.ppgDescribe(redPeak, redRms, redDcLevel) + "       R=" + r.toFixed(3);
-      newState.irText = this.ppgDescribe(irPeak, irRms, irDcLevel);
-
-      this.setState(newState);
+    key: "componentDidUpdate",
+    value: function componentDidUpdate(prevProps) {
+      if (prevProps.samplingPeriodUs !== this.props.samplingPeriodUs) {
+        this.initSignals();
+      }
     }
   }, {
-    key: "ppgDescribe",
-    value: function ppgDescribe(peak, rms, dc) {
-      var values = [];
+    key: "initSignals",
+    value: function initSignals() {
+      var rateHz = 1000000 / this.props.samplingPeriodUs;
+      this.redSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC);
+      this.irSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC);
+      this.setState({
+        nSamples: this.redSignal.nSamples
+      });
+    }
+  }, {
+    key: "setPacket",
+    value: function setPacket(packet) {
+      this.redSignal.update(packet.map(function (p) {
+        return p[0];
+      }));
+      this.irSignal.update(packet.map(function (p) {
+        return p[1];
+      }));
 
-      values.push(["DC", dc]);
-      values.push(["P-P", peak]);
-      values.push(["RMS", rms]);
+      var r = this.redSignal.rms / this.redSignal.dcLevel / (this.irSignal.rms / this.irSignal.dcLevel);
 
-      return values.map(function (v) {
-        return v[0] + ":" + v[1].toFixed(0).padStart(8, " ");
-      }).join("   ");
+      this.setState({
+        redSamples: this.redSignal.samples,
+        irSamples: this.irSignal.samples,
+        redSmoothedSamples: this.redSignal.smoothed,
+        irSmoothedSamples: this.irSignal.smoothed,
+        redText: this.redSignal.describe() + "       R=" + r.toFixed(3),
+        irText: this.irSignal.describe()
+      });
     }
   }, {
     key: "setSmoothing",
@@ -3424,17 +3574,17 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
         React.createElement(_SensorStream.SensorStream, {
           packets: this.state.smoothing ? this.state.redSmoothedSamples : this.state.redSamples,
           colors: [COLOR_RED_CH],
-          numPoints: NSAMPLES,
+          numPoints: this.state.nSamples,
           plotText: this.state.redText }),
         React.createElement(_SensorStream.SensorStream, {
           packets: this.state.smoothing ? this.state.irSmoothedSamples : this.state.irSamples,
           colors: [COLOR_IR_CH],
-          numPoints: NSAMPLES,
+          numPoints: this.state.nSamples,
           plotText: this.state.irText }),
         React.createElement(_SensorStream.SensorStream, {
           packets: zip([this.state.redSamples, this.state.irSamples]),
           colors: [COLOR_RED_CH, COLOR_IR_CH],
-          numPoints: NSAMPLES,
+          numPoints: this.state.nSamples,
           fixedExtent: [0, 1 << 21],
           tight: true,
           horizLines: [{ y: (1 << 21) * 1.0 / 1.2, color: GRAY }] }),
@@ -3467,11 +3617,11 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 var _SensorStream = require("js/widget/SensorStream");
 
+var _ECGStream = require("js/widget/ECGStream");
+
 var _PPGStream = require("js/widget/PPGStream");
 
 var _SPO2Stream = require("js/widget/SPO2Stream");
-
-var _PPGMinusAmbientStream = require("js/widget/PPGMinusAmbientStream");
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -3527,19 +3677,6 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
       });
     }
   }, {
-    key: "getChartComponent",
-    value: function getChartComponent(feature, idx) {
-      var id = feature.id,
-          value = feature.value;
-
-
-      if (id === "afe4900" && value.mode === AFE4900Mode.PPG) {
-        return idx === 0 ? _PPGStream.PPGStream : _PPGMinusAmbientStream.PPGMinusAmbientStream;
-      }
-
-      return _SensorStream.SensorStream;
-    }
-  }, {
     key: "editFeature",
     value: function editFeature(id, key, evt) {
       var onEditFeature = this.props.onEditFeature;
@@ -3562,7 +3699,7 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
   }, {
     key: "render",
     value: function render() {
-      var _this3 = this;
+      var _this2 = this;
 
       var _props3 = this.props,
           feature = _props3.feature,
@@ -3576,10 +3713,34 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
       var value = feature.value;
 
       function renderFeature(feature) {
-        var _this2 = this;
-
-        if (feature.id === "afe4900" && feature.value.mode === AFE4900Mode.SPO2) {
-          return React.createElement(_SPO2Stream.SPO2Stream, { emitter: emitter });
+        if (feature.id === "afe4900") {
+          if (feature.value.mode === AFE4900Mode.SPO2) {
+            return React.createElement(_SPO2Stream.SPO2Stream, {
+              emitter: emitter,
+              samplingPeriodUs: feature.value.samplingPeriodUs });
+          } else if (feature.value.mode === AFE4900Mode.PPG) {
+            return React.createElement(_PPGStream.PPGStream, {
+              emitter: emitter,
+              samplingPeriodUs: feature.value.samplingPeriodUs,
+              ppgIndex: 0 });
+          } else if (feature.value.mode === AFE4900Mode.ECG) {
+            return React.createElement(_ECGStream.ECGStream, {
+              emitter: emitter,
+              samplingPeriodUs: feature.value.samplingPeriodUs });
+          } else if (feature.value.mode === AFE4900Mode.PTT) {
+            return React.createElement(
+              "div",
+              null,
+              React.createElement(_ECGStream.ECGStream, {
+                emitter: emitter,
+                samplingPeriodUs: feature.value.samplingPeriodUs,
+                ecgIndex: 0 }),
+              React.createElement(_PPGStream.PPGStream, {
+                emitter: emitter,
+                samplingPeriodUs: feature.value.samplingPeriodUs,
+                ppgIndex: 1 })
+            );
+          }
         }
 
         return feature.signals(value).map(function (group, i) {
@@ -3591,12 +3752,10 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
             return _extends({}, g, { bullet: bullet });
           });
 
-          var chart = _this2.getChartComponent(feature, i);
-
           return React.createElement(
             "div",
             { key: i },
-            React.createElement(chart, { packets: data, colors: colors }),
+            React.createElement(_SensorStream.SensorStream, { packets: data, colors: colors }),
             React.createElement(mc.charts.Legend, { items: items })
           );
         });
@@ -3626,7 +3785,7 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
                   value: value[opt.key],
                   "data-applies": applies,
                   disabled: disabled || !feature.engaged || !applies,
-                  onChange: _this3.editFeature.bind(_this3, feature.id, opt.key) },
+                  onChange: _this2.editFeature.bind(_this2, feature.id, opt.key) },
                 opt.values.map(function (val) {
                   return React.createElement(
                     "option",
