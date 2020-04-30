@@ -376,6 +376,368 @@ var PPGAnalyze = exports.PPGAnalyze = function () {
 
 });
 
+require.register("js/util/PPGCalibrate.js", function(exports, require, module) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var _BiostampSensor = BiostampSensor,
+    AFE4900OffdacScale = _BiostampSensor.AFE4900OffdacScale,
+    AFE4900TIAGain = _BiostampSensor.AFE4900TIAGain;
+
+
+var TIA_GAINS = [AFE4900TIAGain.TIA_GAIN_10KOHM, AFE4900TIAGain.TIA_GAIN_25KOHM, AFE4900TIAGain.TIA_GAIN_50KOHM, AFE4900TIAGain.TIA_GAIN_100KOHM, AFE4900TIAGain.TIA_GAIN_250KOHM, AFE4900TIAGain.TIA_GAIN_500KOHM, AFE4900TIAGain.TIA_GAIN_1000KOHM, AFE4900TIAGain.TIA_GAIN_1500KOHM, AFE4900TIAGain.TIA_GAIN_2000KOHM];
+var TIA_GAIN_MIN = 0;
+var TIA_GAIN_MAX = TIA_GAINS.length - 1;
+var LED_CURRENT_MIN = 1;
+var LED_CURRENT_MAX = 102;
+
+// Time to wait after adjusting settings before checking signal
+var ADJUST_DELAY = 0.25;
+// Duration to capture for measuring DC level
+var DC_LEVEL_WINDOW = 0.25;
+// Maximum amplitude of a DC level measurement to be considered stable
+var STABLE_MAX_AMPLITUDE = 0.05;
+// Number of times we try to measure DC level if amplitude is too high
+var STABLE_RETRIES = 5;
+
+// Constant to convert AFE4900 ADC codes to volts at ADC input
+var ADC_TO_VOLT = 1.2 / 2097152;
+
+// TIA output voltage must never exceed this value
+var TIA_MAX = 1.0;
+// The goal of calibration is to bring the DC level as close as possible to target
+var TARGET_DC_LEVEL = 0.6 * TIA_MAX;
+// TIA gain must be increased if it is below this value
+var GAIN_LOW_THRESHOLD = 0.2 * TIA_MAX;
+// TIA gain must be decreased if it is above this value
+var GAIN_HIGH_THRESHOLD = 0.8 * TIA_MAX;
+
+var RED = "RED";
+var IR = "IR";
+
+var Calibrator = function () {
+  function Calibrator(ui, config) {
+    _classCallCheck(this, Calibrator);
+
+    this.ui = ui;
+    this.rateHz = 1000000 / config.samplingPeriodUs;
+    this.packetHandlers = new Set();
+  }
+
+  _createClass(Calibrator, [{
+    key: "cancel",
+    value: function cancel() {
+      this.canceled = true;
+    }
+  }, {
+    key: "handlePacket",
+    value: function handlePacket(packet) {
+      if (this.canceled) {
+        return;
+      }
+      var _iteratorNormalCompletion = true;
+      var _didIteratorError = false;
+      var _iteratorError = undefined;
+
+      try {
+        for (var _iterator = this.packetHandlers[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+          var packetHandler = _step.value;
+
+          var keep = packetHandler(packet);
+          if (!keep) {
+            this.packetHandlers.delete(packetHandler);
+          }
+        }
+      } catch (err) {
+        _didIteratorError = true;
+        _iteratorError = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion && _iterator.return) {
+            _iterator.return();
+          }
+        } finally {
+          if (_didIteratorError) {
+            throw _iteratorError;
+          }
+        }
+      }
+    }
+  }, {
+    key: "capture",
+    value: function capture(sampleIndex, duration) {
+      var _this = this;
+
+      if (this.canceled) {
+        return Promise.reject();
+      }
+      return new Promise(function (resolve, reject) {
+        var samples = [];
+        var count = Math.floor(_this.rateHz * duration);
+        var packetHandler = function packetHandler(packet) {
+          if (_this.canceled) {
+            reject();
+            return false;
+          }
+          for (var i = 0; i < packet.length; i++) {
+            samples.push(packet[i][sampleIndex] * ADC_TO_VOLT);
+            if (samples.length === count) {
+              break;
+            }
+          }
+          if (samples.length === count) {
+            resolve(samples);
+            return false;
+          }
+          return true;
+        };
+        _this.packetHandlers.add(packetHandler);
+      });
+    }
+  }, {
+    key: "measureIndex",
+    value: function measureIndex(sampleIndex) {
+      var _this2 = this;
+
+      return new Promise(function (resolve, reject) {
+        var tryMeasure = function tryMeasure(retries) {
+          return _this2.capture(sampleIndex, DC_LEVEL_WINDOW).then(function (samples) {
+            var s = nj.array(samples);
+            var max = s.max();
+            var min = s.min();
+            if (max - min < STABLE_MAX_AMPLITUDE) {
+              resolve({
+                min: min,
+                max: max,
+                dc: s.mean()
+              });
+            } else {
+              if (retries === 0) {
+                reject("DC level did not stabilize");
+              } else {
+                return tryMeasure(retries - 1);
+              }
+            }
+          });
+        };
+        return _this2.capture(sampleIndex, ADJUST_DELAY).then(function (s) {
+          return tryMeasure(STABLE_RETRIES);
+        });
+      });
+    }
+  }, {
+    key: "calibrateChannel",
+    value: function calibrateChannel(ch) {
+      var _this3 = this;
+
+      return this.calibrateTiaGain(ch).then(function () {
+        return _this3.calibrateLedCurrent(ch);
+      });
+    }
+
+    // Try to set the TIA gain so the DC level is close to or above the target
+    // level. If doNotIncrease is set, the gain will only be decreased in order
+    // to avoid getting stuck in a loop.
+
+  }, {
+    key: "calibrateTiaGain",
+    value: function calibrateTiaGain(ch, doNotIncrease) {
+      var _this4 = this;
+
+      return this.measure(ch).then(function (stat) {
+        if (stat.dc < TARGET_DC_LEVEL) {
+          if (doNotIncrease || _this4.gain(ch) === TIA_GAIN_MAX) {
+            // Gain is already at max or we are not increasing; make no further
+            // adjustment
+            return Promise.resolve();
+          } else {
+            // Increase gain to the next step
+            return _this4.adjust(ch, _this4.gain(ch) + 1, _this4.current(ch)).then(function () {
+              return _this4.calibrateTiaGain(ch);
+            });
+          }
+        } else {
+          // Gain is above the target level. Is it too high?
+          if (stat.dc > GAIN_HIGH_THRESHOLD) {
+            if (_this4.gain(ch) === TIA_GAIN_MIN) {
+              // Gain is already at lowest level, cannot decrease further
+              return Promise.resolve();
+            } else {
+              // Gain is too high, decrease it and do not increase again
+              return _this4.adjust(ch, _this4.gain(ch) - 1, _this4.current(ch)).then(function () {
+                return _this4.calibrateTiaGain(ch, true);
+              });
+            }
+          } else {
+            // Gain is above target but in acceptable range, we are done.
+            return Promise.resolve();
+          }
+        }
+      });
+    }
+
+    // Try to set the LED current so the DC level is as close as possible to the target
+
+  }, {
+    key: "calibrateLedCurrent",
+    value: function calibrateLedCurrent(ch) {
+      var _this5 = this;
+
+      return this.measure(ch).then(function (stat) {
+        if (stat.dc < TARGET_DC_LEVEL && _this5.current(ch) < LED_CURRENT_MAX) {
+          // If the DC level is below the target and the current can be
+          // increased, then increase it.
+          return _this5.increaseLedCurrent(ch);
+        } else if (stat.dc >= TARGET_DC_LEVEL && _this5.current(ch) > LED_CURRENT_MIN) {
+          // If the DC level is above the target and the current can be
+          // decreased, then decreased it.
+          return _this5.decreaseLedCurrent(ch);
+        } else {
+          return Promise.resolve();
+        }
+      });
+    }
+
+    // Increase the LED current to try to bring the DC level closer to the
+    // target. Assumes that the LED current can be increased. The DC level is
+    // increased until it overshoots.
+
+  }, {
+    key: "increaseLedCurrent",
+    value: function increaseLedCurrent(ch) {
+      var _this6 = this;
+
+      return this.adjust(ch, this.gain(ch), this.current(ch) + 1).then(function () {
+        return _this6.measure(ch);
+      }).then(function (stat) {
+        if (stat.dc < TARGET_DC_LEVEL && _this6.current(ch) < LED_CURRENT_MAX) {
+          return _this6.increaseLedCurrent(ch);
+        } else {
+          return Promise.resolve();
+        }
+      });
+    }
+
+    // Decrease the LED current to try to bring the DC level closer to the
+    // target. Assumes that the LED current can be decreased. The DC level is
+    // decreased until it undershoots.
+
+  }, {
+    key: "decreaseLedCurrent",
+    value: function decreaseLedCurrent(ch) {
+      var _this7 = this;
+
+      return this.adjust(ch, this.gain(ch), this.current(ch) - 1).then(function () {
+        return _this7.measure(ch);
+      }).then(function (stat) {
+        if (stat.dc > TARGET_DC_LEVEL && _this7.current(ch) > LED_CURRENT_MIN) {
+          return _this7.decreaseLedCurrent(ch);
+        } else {
+          return Promise.resolve();
+        }
+      });
+    }
+  }]);
+
+  return Calibrator;
+}();
+
+var SpO2Calibrator = exports.SpO2Calibrator = function (_Calibrator) {
+  _inherits(SpO2Calibrator, _Calibrator);
+
+  function SpO2Calibrator() {
+    _classCallCheck(this, SpO2Calibrator);
+
+    return _possibleConstructorReturn(this, (SpO2Calibrator.__proto__ || Object.getPrototypeOf(SpO2Calibrator)).apply(this, arguments));
+  }
+
+  _createClass(SpO2Calibrator, [{
+    key: "start",
+    value: function start() {
+      var _this9 = this;
+
+      this.ui.setPhotodiodeDisconnect(false);
+      // Do not use the offset DAC for SpO2
+      this.ui.setOffdacCurrent(0);
+      this.ui.setOffdacCurrentIr(0);
+
+      // First set both TIA gains to a low value 25k and both LEDs to 2.4mA. We
+      // start at a low gain because we need to ensure that neither channel is
+      // ever saturated.
+      this.adjust(RED, 1, 12).then(function () {
+        return _this9.adjust(IR, 1, 12);
+      }).then(function () {
+        return _this9.calibrateChannel(RED);
+      }).then(function () {
+        return _this9.calibrateChannel(IR);
+      }).then(function () {
+        _this9.ui.calibrateDone();
+      }).catch(function (error) {
+        console.error(error);
+        _this9.ui.calibrateDone();
+      });
+    }
+  }, {
+    key: "measure",
+    value: function measure(ch) {
+      if (ch === RED) {
+        return this.measureIndex(0);
+      } else if (ch === IR) {
+        return this.measureIndex(1);
+      }
+    }
+  }, {
+    key: "current",
+    value: function current(ch) {
+      if (ch === RED) {
+        return this.currentRed;
+      } else if (ch === IR) {
+        return this.currentIr;
+      }
+    }
+  }, {
+    key: "gain",
+    value: function gain(ch) {
+      if (ch === RED) {
+        return this.gainRed;
+      } else if (ch === IR) {
+        return this.gainIr;
+      }
+    }
+  }, {
+    key: "adjust",
+    value: function adjust(ch, gain, current) {
+      if (ch === RED) {
+        this.gainRed = gain;
+        this.currentRed = current;
+      } else if (ch === IR) {
+        this.gainIr = gain;
+        this.currentIr = current;
+      }
+      this.ui.setLedCurrent(this.currentRed);
+      this.ui.setLedCurrentIr(this.currentIr);
+      this.ui.setTiaGainValue(TIA_GAINS[this.gainRed]);
+      this.ui.setTiaGainIrValue(TIA_GAINS[this.gainIr]);
+      return this.ui.applyConfig();
+    }
+  }]);
+
+  return SpO2Calibrator;
+}(Calibrator);
+
+});
+
 require.register("js/util/PPGSignal.js", function(exports, require, module) {
 "use strict";
 
@@ -399,7 +761,7 @@ function rms(s) {
 }
 
 var PPGSignal = exports.PPGSignal = function () {
-  function PPGSignal(rateHz, durationSec, winSec) {
+  function PPGSignal(rateHz, durationSec, winSec, filterType) {
     _classCallCheck(this, PPGSignal);
 
     this.rateHz = rateHz;
@@ -408,12 +770,23 @@ var PPGSignal = exports.PPGSignal = function () {
     this.samples = [];
     this.smoothed = [];
 
-    this.ppgBandpassFilter = new Fili.FirFilter(firCalc.bandpass({
-      order: 500,
-      Fs: this.rateHz,
-      F1: 0.5,
-      F2: 5
-    }));
+    if (filterType === "spo2") {
+      this.ppgBandpassFilter = new Fili.FirFilter(firCalc.bandpass({
+        order: 500,
+        Fs: this.rateHz,
+        F1: 0.5,
+        F2: 5
+      }));
+    } else if (filterType === "ppg") {
+      this.ppgBandpassFilter = new Fili.FirFilter(firCalc.bandpass({
+        order: 500,
+        Fs: this.rateHz,
+        F1: 0.5,
+        F2: 10
+      }));
+    } else {
+      throw "Invalid filter type";
+    }
 
     this.ppgDcLevelFilter = new Fili.IirFilter(iirCalc.lowpass({
       order: 3,
@@ -2141,7 +2514,7 @@ var SensorView = exports.SensorView = function (_React$Component) {
 
             drop = React.createElement(
               Drop,
-              { align: "right" },
+              null,
               React.createElement(IconButton, { icon: "configure" }),
               React.createElement(
                 "div",
@@ -2151,6 +2524,7 @@ var SensorView = exports.SensorView = function (_React$Component) {
                   emitter: emitter,
                   sensing: sensing,
                   busy: busy,
+                  config: feature.value,
                   setBusy: this.setBusy.bind(this)
                 })
               )
@@ -2653,8 +3027,11 @@ require.register("js/widget/AFE4900SpO2.js", function(exports, require, module) 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.AFE4900SpO2 = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _PPGCalibrate = require("js/util/PPGCalibrate");
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -2692,6 +3069,29 @@ var AFE4900SpO2 = exports.AFE4900SpO2 = function (_React$Component) {
   }
 
   _createClass(AFE4900SpO2, [{
+    key: "componentDidMount",
+    value: function componentDidMount() {
+      var emitter = this.props.emitter;
+
+
+      emitter.on("afe4900", this.handlePacket, this);
+    }
+  }, {
+    key: "componentWillUnmount",
+    value: function componentWillUnmount() {
+      var emitter = this.props.emitter;
+
+
+      emitter.off("afe4900", this.handlePacket);
+    }
+  }, {
+    key: "handlePacket",
+    value: function handlePacket(packet) {
+      if (this.calibrator) {
+        this.calibrator.handlePacket(packet);
+      }
+    }
+  }, {
     key: "setLedCurrent",
     value: function setLedCurrent(ledCurrent) {
       this.setState({ ledCurrent: ledCurrent });
@@ -2730,6 +3130,16 @@ var AFE4900SpO2 = exports.AFE4900SpO2 = function (_React$Component) {
     value: function setTiaGainIr(evt) {
       var tiaGainIr = parseInt(evt.target.value);
 
+      this.setState({ tiaGainIr: tiaGainIr });
+    }
+  }, {
+    key: "setTiaGainValue",
+    value: function setTiaGainValue(tiaGain) {
+      this.setState({ tiaGain: tiaGain });
+    }
+  }, {
+    key: "setTiaGainIrValue",
+    value: function setTiaGainIrValue(tiaGainIr) {
       this.setState({ tiaGainIr: tiaGainIr });
     }
   }, {
@@ -2775,6 +3185,33 @@ var AFE4900SpO2 = exports.AFE4900SpO2 = function (_React$Component) {
       });
     }
   }, {
+    key: "calibrate",
+    value: function calibrate() {
+      if (this.calibrator) {
+        return;
+      }
+
+      this.setState({ calibrating: true });
+      this.calibrator = new _PPGCalibrate.SpO2Calibrator(this, this.props.config);
+      this.calibrator.start();
+    }
+  }, {
+    key: "calibrateDone",
+    value: function calibrateDone() {
+      this.calibrator = undefined;
+      this.setState({ calibrating: false });
+    }
+  }, {
+    key: "cancelCalibrate",
+    value: function cancelCalibrate() {
+      if (!this.calibrator) {
+        return;
+      }
+
+      this.calibrator.cancel();
+      this.calibrateDone();
+    }
+  }, {
     key: "render",
     value: function render() {
       var _props2 = this.props,
@@ -2788,7 +3225,8 @@ var AFE4900SpO2 = exports.AFE4900SpO2 = function (_React$Component) {
           offdacScale = _state.offdacScale,
           tiaGain = _state.tiaGain,
           tiaGainIr = _state.tiaGainIr,
-          photodiodeDisconnect = _state.photodiodeDisconnect;
+          photodiodeDisconnect = _state.photodiodeDisconnect,
+          calibrating = _state.calibrating;
 
 
       return React.createElement(
@@ -3054,8 +3492,18 @@ var AFE4900SpO2 = exports.AFE4900SpO2 = function (_React$Component) {
         ),
         React.createElement(
           "button",
-          { disabled: busy, onClick: this.applyConfig.bind(this) },
+          { disabled: busy || calibrating, onClick: this.applyConfig.bind(this) },
           "Set"
+        ),
+        React.createElement(
+          "button",
+          { disabled: calibrating, onClick: this.calibrate.bind(this) },
+          "Calibrate"
+        ),
+        React.createElement(
+          "button",
+          { disabled: !calibrating, onClick: this.cancelCalibrate.bind(this) },
+          "Cancel Cal"
         )
       );
     }
@@ -3215,6 +3663,7 @@ var BLUE = mc.ui.colors.BLUE;
 
 var COLOR_PPG = BLUE;
 
+var AUTOSCALE_SEC = 2;
 var DURATION_SEC = 10;
 var WIN_SEC = 5;
 
@@ -3229,7 +3678,7 @@ var PPGStream = exports.PPGStream = function (_React$Component) {
     _this.initSignals();
 
     _this.state = {
-      nSamples: _this.ppgSignal.nSamples,
+      rateHz: _this.ppgSignal.rateHz,
       ppgSamples: [],
       ppgSmoothedSamples: [],
       smoothing: true,
@@ -3267,10 +3716,13 @@ var PPGStream = exports.PPGStream = function (_React$Component) {
     key: "initSignals",
     value: function initSignals() {
       var rateHz = 1000000 / this.props.samplingPeriodUs;
-      this.ppgSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC);
-      this.setState({
-        nSamples: this.ppgSignal.nSamples
-      });
+      this.ppgSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC, "ppg");
+      this.setState({ rateHz: rateHz });
+    }
+  }, {
+    key: "secToSamples",
+    value: function secToSamples(sec) {
+      return Math.floor(sec * this.state.rateHz);
     }
   }, {
     key: "setPacket",
@@ -3310,7 +3762,8 @@ var PPGStream = exports.PPGStream = function (_React$Component) {
         React.createElement(_SensorStream.SensorStream, {
           packets: this.state.smoothing ? this.state.ppgSmoothedSamples : this.state.ppgSamples,
           colors: [COLOR_PPG],
-          numPoints: this.state.nSamples,
+          numPoints: this.secToSamples(DURATION_SEC),
+          autoscalePoints: this.secToSamples(AUTOSCALE_SEC),
           plotText: this.state.ppgText }),
         React.createElement(mc.charts.Legend, { items: items }),
         React.createElement(Check, {
@@ -3443,6 +3896,7 @@ var _mc$ui$colors = mc.ui.colors,
 var COLOR_RED_CH = RED;
 var COLOR_IR_CH = TEAL;
 
+var AUTOSCALE_SEC = 2;
 var DURATION_SEC = 10;
 var WIN_SEC = 5;
 
@@ -3473,7 +3927,7 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
     _this.initSignals();
 
     _this.state = {
-      nSamples: _this.redSignal.nSamples,
+      rateHz: _this.redSignal.rateHz,
       redSamples: [],
       irSamples: [],
       redSmoothedSamples: [],
@@ -3514,11 +3968,14 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
     key: "initSignals",
     value: function initSignals() {
       var rateHz = 1000000 / this.props.samplingPeriodUs;
-      this.redSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC);
-      this.irSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC);
-      this.setState({
-        nSamples: this.redSignal.nSamples
-      });
+      this.redSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC, "spo2");
+      this.irSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC, "spo2");
+      this.setState({ rateHz: rateHz });
+    }
+  }, {
+    key: "secToSamples",
+    value: function secToSamples(sec) {
+      return Math.floor(sec * this.state.rateHz);
     }
   }, {
     key: "setPacket",
@@ -3574,17 +4031,19 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
         React.createElement(_SensorStream.SensorStream, {
           packets: this.state.smoothing ? this.state.redSmoothedSamples : this.state.redSamples,
           colors: [COLOR_RED_CH],
-          numPoints: this.state.nSamples,
+          numPoints: this.secToSamples(DURATION_SEC),
+          autoscalePoints: this.secToSamples(AUTOSCALE_SEC),
           plotText: this.state.redText }),
         React.createElement(_SensorStream.SensorStream, {
           packets: this.state.smoothing ? this.state.irSmoothedSamples : this.state.irSamples,
           colors: [COLOR_IR_CH],
-          numPoints: this.state.nSamples,
+          numPoints: this.secToSamples(DURATION_SEC),
+          autoscalePoints: this.secToSamples(AUTOSCALE_SEC),
           plotText: this.state.irText }),
         React.createElement(_SensorStream.SensorStream, {
           packets: zip([this.state.redSamples, this.state.irSamples]),
           colors: [COLOR_RED_CH, COLOR_IR_CH],
-          numPoints: this.state.nSamples,
+          numPoints: this.secToSamples(DURATION_SEC),
           fixedExtent: [0, 1 << 21],
           tight: true,
           horizLines: [{ y: (1 << 21) * 1.0 / 1.2, color: GRAY }] }),
@@ -3954,6 +4413,35 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
       return false;
     }
   }, {
+    key: "extent",
+    value: function extent(values) {
+      // Get the extent of all displayed points
+      var min = Math.min.apply(null, values);
+      var max = Math.max.apply(null, values);
+      if (this.props.autoscalePoints) {
+        // Get the extent of only the more recent points on the right side
+        var v = values.slice(-this.props.autoscalePoints);
+        var recentMin = Math.min.apply(null, v);
+        var recentMax = Math.max.apply(null, v);
+        // If the extent of the entire display is close enough to the recent
+        // extent, then leave it alone. But if it's significantly larger, then
+        // scale closer to the recent extent.
+        if (max - min > 4.0 * (recentMax - recentMin)) {
+          var a = recentMax - recentMin;
+          var m = (recentMax + recentMin) / 2;
+          max = m + a;
+          min = m - a;
+        }
+      }
+
+      if (min === max) {
+        max *= 2;
+        min = 0;
+      }
+
+      return [min, max];
+    }
+  }, {
     key: "numPoints",
     value: function numPoints() {
       return this.props.numPoints || 500;
@@ -4003,7 +4491,7 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
       var width = canvas.getBoundingClientRect().width * 2;
       var height = 120 * 2;
 
-      var _ref = this.props.fixedExtent || SensorStream.extent(packets.flat()),
+      var _ref = this.props.fixedExtent || this.extent(packets.flat()),
           _ref2 = _slicedToArray(_ref, 2),
           min = _ref2[0],
           max = _ref2[1];
@@ -4076,19 +4564,6 @@ var SensorStream = exports.SensorStream = function (_React$Component) {
         { className: "eng-sensor-stream" },
         React.createElement("canvas", { ref: "canvas", width: "100%", height: "120" })
       );
-    }
-  }], [{
-    key: "extent",
-    value: function extent(values) {
-      var min = Math.min.apply(null, values);
-      var max = Math.max.apply(null, values);
-
-      if (min === max) {
-        max *= 2;
-        min = 0;
-      }
-
-      return [min, max];
     }
   }]);
 
