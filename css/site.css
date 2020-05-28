@@ -80,6 +80,7 @@ h1 {
 
 h2 {
   font-size: 1.5em;
+  line-height: 1.4em;
 }
 
 h3 {
@@ -166,4 +167,38 @@ footer {
   margin-top: 5em;
   border-top: 1px solid #ccc;
   padding-top: 1em;
+}
+
+@media only screen
+  and (min-device-width: 320px)
+  and (max-device-width: 480px)
+  and (-webkit-min-device-pixel-ratio: 2) {
+
+  #ribbon {
+    text-align: center;
+  }
+
+  #main section {
+    padding: 2em;
+  }
+
+  .hero {
+    background: #eee;
+  }
+
+  .hero p {
+    max-width: 100%;
+  }
+
+  .duplex {
+    display: block;
+  }
+
+  .duplex div {
+    margin: 0 0;
+  }
+
+  .features {
+    grid-template-columns: 1fr 1fr;
+  }
 }
