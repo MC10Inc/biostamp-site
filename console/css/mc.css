@@ -335,8 +335,8 @@ img[tabindex] {
   margin: 0.25em 0.5em;
 }
 .mc-check input {
-  -webkit-appearance: button;
-  appearance: button;
+  -webkit-appearance: none;
+  appearance: none;
   cursor: pointer;
   background-image: url("../img/mc/icon.check.circle.0.svg");
   background-size: 2.5em 2.5em;
@@ -701,6 +701,40 @@ label {
   background: none;
   color: #e0002b;
   font-weight: bold;
+}
+.mc-form-files > div {
+  border: 1px dashed #999;
+  padding: 1em;
+  min-height: 100px;
+  margin-bottom: 0.5em;
+}
+.mc-form-files > div[data-dragging=true] {
+  background: #ebf7ff;
+}
+.mc-form-files input {
+  display: none;
+}
+.mc-form-files li {
+  margin: 1em 0;
+}
+.mc-form-files li > span {
+  pointer-events: auto;
+  padding: 0.35em 0.65em 0.5em 0.65em;
+  background: #f0f6f9;
+  border: 1px solid #aad6ed;
+  border-radius: 1em;
+}
+.mc-form-files li > span span {
+  vertical-align: middle;
+}
+.mc-form-files-target {
+  pointer-events: none;
+}
+.mc-form-files-target > small {
+  margin-bottom: 1em;
+}
+.mc-form-files-add {
+  font-size: 0.9em;
 }
 
 .mc-help-view header {

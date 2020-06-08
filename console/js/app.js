@@ -159,7 +159,7 @@ ReactDOM.render(React.createElement(_SensorView.SensorView, null), document.getE
 });
 
 require.register("js/util/ECGSignal.js", function(exports, require, module) {
-"use strict";
+'use strict';
 
 Object.defineProperty(exports, "__esModule", {
   value: true
@@ -169,209 +169,53 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
+var iirCalc = Fili.CalcCascades(); // eslint-disable-line
+var firCalc = Fili.FirCoeffs(); // eslint-disable-line
+
 var ECGSignal = exports.ECGSignal = function () {
-  function ECGSignal(rateHz, durationSec, winSec) {
+  function ECGSignal(rateHz, durationSec) {
     _classCallCheck(this, ECGSignal);
 
     this.rateHz = rateHz;
     this.nSamples = Math.floor(durationSec * this.rateHz);
     this.samples = [];
+    this.ecgFiltered = [];
+    this.emgFiltered = [];
+
+    this.ecgFilter = new Fili.FirFilter(firCalc.bandpass({
+      order: 250,
+      Fs: this.rateHz,
+      F1: 2,
+      F2: 20
+    }));
+
+    this.emgHighpass = new Fili.IirFilter(iirCalc.highpass({
+      order: 4,
+      characteristic: 'butterworth',
+      Fs: this.rateHz,
+      Fc: 100
+    }));
+
+    this.emgEnvelope = new Fili.IirFilter(iirCalc.lowpass({
+      order: 2,
+      characteristic: 'butterworth',
+      Fs: this.rateHz,
+      Fc: 10
+    }));
   }
 
   _createClass(ECGSignal, [{
-    key: "update",
+    key: 'update',
     value: function update(newSamples) {
       this.samples = this.samples.concat(newSamples).slice(-this.nSamples);
+      var newEcg = this.ecgFilter.multiStep(newSamples);
+      this.ecgFiltered = this.ecgFiltered.concat(newEcg).slice(-this.nSamples);
+      var newEmg = this.emgEnvelope.multiStep(this.emgHighpass.multiStep(newSamples).map(Math.abs));
+      this.emgFiltered = this.emgFiltered.concat(newEmg).slice(-this.nSamples);
     }
   }]);
 
   return ECGSignal;
-}();
-
-});
-
-require.register("js/util/PPGAnalyze.js", function(exports, require, module) {
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-var Fs = 250;
-var DURATION = 10;
-
-var PPGAnalyze = exports.PPGAnalyze = function () {
-  function PPGAnalyze() {
-    _classCallCheck(this, PPGAnalyze);
-  }
-
-  _createClass(PPGAnalyze, [{
-    key: "setDynamicConfig",
-    value: function setDynamicConfig(config) {
-      this.config = config;
-    }
-  }, {
-    key: "tiaGainRf",
-    value: function tiaGainRf() {
-      if (!this.config) {
-        return undefined;
-      } else if (this.config.tiaGain === "TIA_GAIN_10KOHM") {
-        return 10000;
-      } else if (this.config.tiaGain === "TIA_GAIN_25KOHM") {
-        return 25000;
-      } else if (this.config.tiaGain === "TIA_GAIN_50KOHM") {
-        return 50000;
-      } else if (this.config.tiaGain === "TIA_GAIN_100KOHM") {
-        return 100000;
-      } else if (this.config.tiaGain === "TIA_GAIN_250KOHM") {
-        return 250000;
-      } else if (this.config.tiaGain === "TIA_GAIN_500KOHM") {
-        return 500000;
-      } else if (this.config.tiaGain === "TIA_GAIN_1000KOHM") {
-        return 1000000;
-      } else if (this.config.tiaGain === "TIA_GAIN_1500KOHM") {
-        return 1500000;
-      } else if (this.config.tiaGain === "TIA_GAIN_2000KOHM") {
-        return 2000000;
-      }
-    }
-  }, {
-    key: "request",
-    value: function request(resultHandler) {
-      if (!this.config) {
-        resultHandler({ error: "AFE4900 dynamic config unknown, cannot analyze. Please set config first." });
-        return;
-      }
-
-      this.resultHandler = resultHandler;
-      this.ledSamples = [];
-      this.ambSamples = [];
-      this.numSamples = Fs * DURATION;
-    }
-  }, {
-    key: "read",
-    value: function read(packet) {
-      if (!this.resultHandler) {
-        return;
-      }
-
-      console.log(packet.toString());
-      for (var i = 0; i < packet.length; i++) {
-        this.ledSamples.push(packet[i][0]);
-        this.ambSamples.push(packet[i][1]);
-      }
-
-      if (this.ledSamples.length >= this.numSamples) {
-        this.finish();
-      }
-    }
-  }, {
-    key: "checkRange",
-    value: function checkRange(s) {
-      // AFE4900 ADC is 22-bit, with full scale range representing +/- 1.2v
-      // However TIA operating range is only +/- 1.0v.
-      // Signal is invalid and should not be analyzed if it exceeds the TIA operating range.
-      var cmax = (1 << 21) / 1.2 * 1.0;
-
-      return s.max() < cmax && s.min() > -cmax;
-    }
-  }, {
-    key: "codesToOutputVolts",
-    value: function codesToOutputVolts(s) {
-      // Convert ADC codes to volts at TIA output / ADC input
-      return s.multiply(1.2 / (1 << 21));
-    }
-  }, {
-    key: "outputVoltsToInputAmps",
-    value: function outputVoltsToInputAmps(s) {
-      // Convert volts at TIA output to amps at TIA input based on gain Rf
-      // Vout = 2 * I * Rf
-      return s.divide(2 * this.tiaGainRf());
-    }
-  }, {
-    key: "peakToPeak",
-    value: function peakToPeak(s) {
-      return s.max() - s.min();
-    }
-  }, {
-    key: "rms",
-    value: function rms(s) {
-      return Math.sqrt(s.subtract(s.mean()).pow(2).mean());
-    }
-  }, {
-    key: "analyze",
-    value: function analyze(s) {
-      var vout = this.codesToOutputVolts(s);
-      vout.subtract(vout.mean(), false);
-
-      var iin = this.outputVoltsToInputAmps(vout);
-
-      return {
-        vOutMean: vout.mean(),
-        vOutPp: this.peakToPeak(vout),
-        vOutRms: this.rms(vout),
-        iInMean: iin.mean(),
-        iInPp: this.peakToPeak(iin),
-        iInRms: this.rms(iin)
-      };
-    }
-  }, {
-    key: "microVolt",
-    value: function microVolt(v) {
-      return (v * 1e6).toFixed(3);
-    }
-  }, {
-    key: "picoAmp",
-    value: function picoAmp(i) {
-      return (i * 1e12).toFixed(3);
-    }
-  }, {
-    key: "finish",
-    value: function finish() {
-      var led = nj.array(this.ledSamples);
-      var amb = nj.array(this.ambSamples);
-
-      if (!this.checkRange(led)) {
-        this.resultHandler({ error: "LED signal exceeds TIA operating range" });
-        this.resultHandler = undefined;
-        return;
-      }
-
-      if (!this.checkRange(amb)) {
-        this.resultHandler({ error: "Ambient signal exceeds TIA operating range" });
-        this.resultHandler = undefined;
-        return;
-      }
-
-      var ledResults = this.analyze(led);
-      var ambResults = this.analyze(amb);
-
-      var lmaVout = this.codesToOutputVolts(led.subtract(amb));
-      var lmaIin = this.outputVoltsToInputAmps(lmaVout);
-
-      var desc = {
-        "led-amb_vout_mean": this.microVolt(lmaVout.mean()),
-        "led-amb_iin_mean": this.picoAmp(lmaIin.mean()),
-        "led_vout_pp": this.microVolt(ledResults.vOutPp),
-        "led_vout_rms": this.microVolt(ledResults.vOutRms),
-        "led_iin_pp": this.picoAmp(ledResults.iInPp),
-        "led_iin_rms": this.picoAmp(ledResults.iInRms),
-        "amb_vout_pp": this.microVolt(ambResults.vOutPp),
-        "amb_vout_rms": this.microVolt(ambResults.vOutRms),
-        "amb_iin_pp": this.picoAmp(ambResults.iInPp),
-        "amb_iin_rms": this.picoAmp(ambResults.iInRms)
-      };
-
-      this.resultHandler({ led: ledResults, amb: ambResults, desc: desc });
-      this.resultHandler = undefined;
-    }
-  }]);
-
-  return PPGAnalyze;
 }();
 
 });
@@ -425,6 +269,7 @@ var GAIN_HIGH_THRESHOLD = 0.8 * TIA_MAX;
 
 var RED = "RED";
 var IR = "IR";
+var PPG = "PPG";
 
 var Calibrator = function () {
   function Calibrator(ui, config) {
@@ -736,6 +581,69 @@ var SpO2Calibrator = exports.SpO2Calibrator = function (_Calibrator) {
   return SpO2Calibrator;
 }(Calibrator);
 
+var PPGCalibrator = exports.PPGCalibrator = function (_Calibrator2) {
+  _inherits(PPGCalibrator, _Calibrator2);
+
+  function PPGCalibrator() {
+    _classCallCheck(this, PPGCalibrator);
+
+    return _possibleConstructorReturn(this, (PPGCalibrator.__proto__ || Object.getPrototypeOf(PPGCalibrator)).apply(this, arguments));
+  }
+
+  _createClass(PPGCalibrator, [{
+    key: "start",
+    value: function start() {
+      var _this11 = this;
+
+      this.ui.setPhotodiodeDisconnect(false);
+      this.ui.setOffdacCurrent(0);
+
+      this.adjust(PPG, 1, 12).then(function () {
+        return _this11.calibrateChannel(PPG);
+      }).then(function () {
+        _this11.ui.calibrateDone();
+      }).catch(function (error) {
+        console.error(error);
+        _this11.ui.calibrateDone();
+      });
+    }
+  }, {
+    key: "measure",
+    value: function measure(ch) {
+      if (ch === PPG) {
+        return this.measureIndex(0);
+      }
+    }
+  }, {
+    key: "current",
+    value: function current(ch) {
+      if (ch === PPG) {
+        return this.currentPpg;
+      }
+    }
+  }, {
+    key: "gain",
+    value: function gain(ch) {
+      if (ch === PPG) {
+        return this.gainPpg;
+      }
+    }
+  }, {
+    key: "adjust",
+    value: function adjust(ch, gain, current) {
+      if (ch === PPG) {
+        this.gainPpg = gain;
+        this.currentPpg = current;
+      }
+      this.ui.setLedCurrent(this.currentPpg);
+      this.ui.setTiaGainValue(TIA_GAINS[this.gainPpg]);
+      return this.ui.applyConfig();
+    }
+  }]);
+
+  return PPGCalibrator;
+}(Calibrator);
+
 });
 
 require.register("js/util/PPGSignal.js", function(exports, require, module) {
@@ -955,7 +863,7 @@ var SensorConfig = exports.SensorConfig = function () {
         }
       }, {
         key: "samplingPeriodUs",
-        values: [10000, 4000, 2000],
+        values: [10000, 4000, 2000, 1000],
         tx: function tx(n) {
           return 1000000 / n + "Hz";
         }
@@ -2689,7 +2597,7 @@ exports.AFE4900PPG = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _PPGAnalyze = require("js/util/PPGAnalyze");
+var _PPGCalibrate = require("js/util/PPGCalibrate");
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -2713,12 +2621,6 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
 
     var _this = _possibleConstructorReturn(this, (AFE4900PPG.__proto__ || Object.getPrototypeOf(AFE4900PPG)).call(this, props));
 
-    _this.analyzer = new _PPGAnalyze.PPGAnalyze();
-
-    _this.readPacket = function (packet) {
-      return _this.analyzer.read(packet);
-    };
-
     _this.state = {
       ledCurrent: 12,
       offdacCurrent: 0,
@@ -2736,7 +2638,7 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
       var emitter = this.props.emitter;
 
 
-      emitter.on("afe4900", this.readPacket, this);
+      emitter.on("afe4900", this.handlePacket, this);
     }
   }, {
     key: "componentWillUnmount",
@@ -2744,7 +2646,14 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
       var emitter = this.props.emitter;
 
 
-      emitter.off("afe4900", this.readPacket);
+      emitter.off("afe4900", this.handlePacket);
+    }
+  }, {
+    key: "handlePacket",
+    value: function handlePacket(packet) {
+      if (this.calibrator) {
+        this.calibrator.handlePacket(packet);
+      }
     }
   }, {
     key: "setLedCurrent",
@@ -2776,6 +2685,11 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
       this.setState({ tiaGain: tiaGain });
     }
   }, {
+    key: "setTiaGainValue",
+    value: function setTiaGainValue(tiaGain) {
+      this.setState({ tiaGain: tiaGain });
+    }
+  }, {
     key: "setPhotodiodeDisconnect",
     value: function setPhotodiodeDisconnect(checked) {
       var photodiodeDisconnect = checked;
@@ -2804,8 +2718,6 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
   }, {
     key: "applyConfig",
     value: function applyConfig(evt) {
-      var _this2 = this;
-
       var _props = this.props,
           sensor = _props.sensor,
           setBusy = _props.setBusy;
@@ -2817,23 +2729,34 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
 
       return sensor.afe4900DynamicConfig(config).then(function () {
         setBusy(false);
-
-        _this2.analyzer.setDynamicConfig(config);
       });
     }
   }, {
-    key: "requestPpgAnalyze",
-    value: function requestPpgAnalyze(evt) {
-      var setBusy = this.props.setBusy;
+    key: "calibrate",
+    value: function calibrate() {
+      if (this.calibrator) {
+        return;
+      }
 
+      this.setState({ calibrating: true });
+      this.calibrator = new _PPGCalibrate.PPGCalibrator(this, this.props.config);
+      this.calibrator.start();
+    }
+  }, {
+    key: "calibrateDone",
+    value: function calibrateDone() {
+      this.calibrator = undefined;
+      this.setState({ calibrating: false });
+    }
+  }, {
+    key: "cancelCalibrate",
+    value: function cancelCalibrate() {
+      if (!this.calibrator) {
+        return;
+      }
 
-      setBusy(true);
-
-      this.analyzer.request(function (results) {
-        setBusy(false);
-
-        console.info(results);
-      });
+      this.calibrator.cancel();
+      this.calibrateDone();
     }
   }, {
     key: "render",
@@ -2847,7 +2770,8 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
           offdacCurrentAmbient = _state.offdacCurrentAmbient,
           offdacScale = _state.offdacScale,
           tiaGain = _state.tiaGain,
-          photodiodeDisconnect = _state.photodiodeDisconnect;
+          photodiodeDisconnect = _state.photodiodeDisconnect,
+          calibrating = _state.calibrating;
 
 
       return React.createElement(
@@ -3004,13 +2928,18 @@ var AFE4900PPG = exports.AFE4900PPG = function (_React$Component) {
         ),
         React.createElement(
           "button",
-          { disabled: busy, onClick: this.applyConfig.bind(this) },
+          { disabled: busy || calibrating, onClick: this.applyConfig.bind(this) },
           "Set"
         ),
         React.createElement(
           "button",
-          { disabled: !sensing || busy, onClick: this.requestPpgAnalyze.bind(this) },
-          "Analyze"
+          { disabled: calibrating, onClick: this.calibrate.bind(this) },
+          "Calibrate"
+        ),
+        React.createElement(
+          "button",
+          { disabled: !calibrating, onClick: this.cancelCalibrate.bind(this) },
+          "Cancel Cal"
         )
       );
     }
@@ -3535,11 +3464,15 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
 var Check = mc.widgets.Check;
-var ORANGE = mc.ui.colors.ORANGE;
+var _mc$ui$colors = mc.ui.colors,
+    ORANGE = _mc$ui$colors.ORANGE,
+    BLUE = _mc$ui$colors.BLUE;
 
 
 var COLOR_ECG = ORANGE;
+var COLOR_EMG = BLUE;
 
+var AUTOSCALE_SEC = 3;
 var DURATION_SEC = 10;
 
 var ECGStream = exports.ECGStream = function (_React$Component) {
@@ -3553,8 +3486,12 @@ var ECGStream = exports.ECGStream = function (_React$Component) {
     _this.initSignals();
 
     _this.state = {
+      rateHz: _this.ecgSignal.rateHz,
       nSamples: _this.ecgSignal.nSamples,
-      ecgSamples: []
+      ecgSamples: [],
+      ecgFilteredSamples: [],
+      emgFilteredSamples: [],
+      filtered: false
     };
     return _this;
   }
@@ -3594,6 +3531,11 @@ var ECGStream = exports.ECGStream = function (_React$Component) {
       });
     }
   }, {
+    key: "secToSamples",
+    value: function secToSamples(sec) {
+      return Math.floor(sec * this.state.rateHz);
+    }
+  }, {
     key: "setPacket",
     value: function setPacket(packet) {
       var _this2 = this;
@@ -3607,8 +3549,42 @@ var ECGStream = exports.ECGStream = function (_React$Component) {
       }
 
       this.setState({
-        ecgSamples: this.ecgSignal.samples
+        ecgSamples: this.ecgSignal.samples,
+        ecgFilteredSamples: this.ecgSignal.ecgFiltered,
+        emgFilteredSamples: this.ecgSignal.emgFiltered
       });
+    }
+  }, {
+    key: "setFiltered",
+    value: function setFiltered(checked) {
+      var filtered = checked;
+
+      this.setState({ filtered: filtered });
+    }
+  }, {
+    key: "renderRaw",
+    value: function renderRaw() {
+      return React.createElement(_SensorStream.SensorStream, {
+        packets: this.state.ecgSamples,
+        colors: [COLOR_ECG],
+        numPoints: this.state.nSamples });
+    }
+  }, {
+    key: "renderFiltered",
+    value: function renderFiltered() {
+      return React.createElement(
+        "div",
+        null,
+        React.createElement(_SensorStream.SensorStream, {
+          packets: this.state.ecgFilteredSamples,
+          colors: [COLOR_ECG],
+          autoscalePoints: this.secToSamples(AUTOSCALE_SEC),
+          numPoints: this.state.nSamples }),
+        React.createElement(_SensorStream.SensorStream, {
+          packets: this.state.emgFilteredSamples,
+          colors: [COLOR_EMG],
+          numPoints: this.state.nSamples })
+      );
     }
   }, {
     key: "render",
@@ -3618,16 +3594,23 @@ var ECGStream = exports.ECGStream = function (_React$Component) {
 
       var bullet = mc.charts.Legend.DOT;
 
-      var items = [{ label: "Millivolts", color: COLOR_ECG, bullet: bullet }];
+      var items = void 0;
+      if (this.state.filtered) {
+        items = [{ label: "ECG", color: COLOR_ECG, bullet: bullet }, { label: "EMG", color: COLOR_EMG, bullet: bullet }];
+      } else {
+        items = [{ label: "Millivolts", color: COLOR_ECG, bullet: bullet }];
+      }
 
       return React.createElement(
         "div",
         null,
-        React.createElement(_SensorStream.SensorStream, {
-          packets: this.state.ecgSamples,
-          colors: [COLOR_ECG],
-          numPoints: this.state.nSamples }),
-        React.createElement(mc.charts.Legend, { items: items })
+        this.state.filtered ? this.renderFiltered.bind(this)() : this.renderRaw.bind(this)(),
+        React.createElement(mc.charts.Legend, { items: items }),
+        React.createElement(Check, {
+          label: "ECG / EMG Filter",
+          checked: smoothing,
+          size: "small",
+          onCheck: this.setFiltered.bind(this) })
       );
     }
   }]);

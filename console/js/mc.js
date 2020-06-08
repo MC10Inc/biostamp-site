@@ -1077,9 +1077,7 @@ var Emitter = function () {
   function Emitter(obj) {
     _classCallCheck(this, Emitter);
 
-    for (var i in obj) {
-      this[i] = obj[i];
-    }
+    Object.assign(this, obj);
 
     this.listeners = [];
   }
@@ -1091,21 +1089,17 @@ var Emitter = function () {
         args[_key - 1] = arguments[_key];
       }
 
-      var emitted = false;
       var listeners = this.listeners.filter(function (listener) {
         return name === listener.name;
       });
 
       listeners.forEach(function (listener) {
         listener.callback.apply(listener.context, args);
-        emitted = true;
 
         if (listener.once) {
           this.off(name, listener.callback);
         }
       }, this);
-
-      return emitted;
     }
   }, {
     key: "on",
@@ -1767,14 +1761,6 @@ var Router = function () {
     this._routes = [];
     this._route;
     this._params;
-    this._last = "/";
-    this._prompt = function () {
-      return Promise.resolve();
-    };
-    this._prompting = false;
-    this._doPrompt = function () {
-      return false;
-    };
     this._fallback = function () {
       return null;
     };
@@ -1786,10 +1772,6 @@ var Router = function () {
     value: function _onHashChange(evt) {
       var _this = this;
 
-      if (this._prompting) {
-        return;
-      }
-
       var hash = location.hash;
       var route = this._routes.find(function (r) {
         return r.pattern.test(hash);
@@ -1797,6 +1779,7 @@ var Router = function () {
 
       if (route !== this._route) {
         this._route = route;
+
         window.scrollTo(0, 0);
       }
 
@@ -1805,30 +1788,18 @@ var Router = function () {
 
         var params = {};
         var matches = hash.match(route.pattern);
-        var promise = this._doPrompt() ? (this._prompting = true) && this._prompt() : Promise.resolve();
 
         this._params = params;
 
         route.tokens.forEach(function (token, i) {
           var str = matches[i + 1];
+
           params[token.substr(1)] = str.match("=") ? _this._decode(str) : decodeURI(str);
         });
 
-        return promise.then(function () {
-          _this._doPrompt = function () {
-            return false;
-          };
-          _this._prompting = false;
-          _this._last = hash;
+        route.callback(params, route.route, route.id);
 
-          route.callback(params, route.route, route.id);
-        }).catch(function () {
-          _this._setHash(_this._last);
-
-          setTimeout(function () {
-            _this._prompting = false;
-          }, 100);
-        });
+        return;
       }
 
       this._fallback();
@@ -1957,18 +1928,6 @@ var Router = function () {
     key: "refresh",
     value: function refresh(newParams) {
       this.trigger(this._route.id, _extends({}, this._params, newParams));
-    }
-  }, {
-    key: "setPrompt",
-    value: function setPrompt(prompt) {
-      this._prompt = prompt;
-    }
-  }, {
-    key: "doPrompt",
-    value: function doPrompt(_doPrompt) {
-      this._doPrompt = typeof _doPrompt === "boolean" ? function () {
-        return _doPrompt;
-      } : _doPrompt;
     }
   }]);
 
@@ -3388,6 +3347,7 @@ var widgets = {
   FormControls: require("./widget/FormControls"),
   FormDate: require("./widget/FormDate"),
   FormFeedback: require("./widget/FormFeedback"),
+  FormFiles: require("./widget/FormFiles"),
   FormRange: require("./widget/FormRange"),
   IconButton: require("./widget/IconButton"),
   Meter: require("./widget/Meter"),
@@ -3514,26 +3474,6 @@ if (mc.server.ENV !== "prod") {
   }
 }
 
-// default behavior for intercepting route change
-mc.router.setPrompt(function () {
-  return new Promise(function (resolve, reject) {
-    mc.ui.alert(tx("cancel_editing"), {
-      mode: "confirm",
-      labels: {
-        cancel: tx("keep_editing"),
-        confirm: tx("discard_changes")
-      },
-      onHide: function onHide(confirmed) {
-        if (confirmed) {
-          resolve();
-        } else {
-          reject();
-        }
-      }
-    });
-  });
-});
-
 // default "page not found" behavior
 mc.router.setFallback(mc.ui.fatal);
 
@@ -3547,7 +3487,9 @@ mc.bundle.addMessages({
   "oops": "Oops!",
   "cancel_editing": "Wait! You have unsaved changes.",
   "keep_editing": "Keep Editing",
-  "discard_changes": "Discard Changes"
+  "discard_changes": "Discard Changes",
+  "drag_files_here": "Drag files here",
+  "add_files": "Add files ..."
 });
 
 window.Promise = window.Promise || PromiseLib.Promise;
@@ -6234,6 +6176,229 @@ var FormFeedback = function FormFeedback(props) {
 };
 
 module.exports = FormFeedback;
+
+});
+
+require.register("hec-biostamp-core/js/widget/FormFiles.js", function(exports, require, module) {
+"use strict";
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var IconButton = require("./IconButton");
+var Format = require("../lib/Format.js");
+
+var windowDragOver = function windowDragOver(evt) {
+  evt.preventDefault();
+};
+
+var windowDrop = function windowDrop(evt) {
+  evt.preventDefault();
+};
+
+var FormFiles = function (_React$Component) {
+  _inherits(FormFiles, _React$Component);
+
+  function FormFiles(props) {
+    _classCallCheck(this, FormFiles);
+
+    var _this = _possibleConstructorReturn(this, (FormFiles.__proto__ || Object.getPrototypeOf(FormFiles)).call(this, props));
+
+    _this.state = {
+      dragging: false
+    };
+    return _this;
+  }
+
+  _createClass(FormFiles, [{
+    key: "componentDidMount",
+    value: function componentDidMount() {
+      window.addEventListener("dragover", windowDragOver);
+      window.addEventListener("drop", windowDrop);
+    }
+  }, {
+    key: "componentWillUnmount",
+    value: function componentWillUnmount() {
+      window.removeEventListener("dragover", windowDragOver);
+      window.removeEventListener("drop", windowDrop);
+    }
+  }, {
+    key: "shouldComponentUpdate",
+    value: function shouldComponentUpdate(nextProps, nextState) {
+      var files = this.props.files;
+      var dragging = this.state.dragging;
+
+
+      return dragging !== nextState.dragging || files.length !== nextProps.files.length;
+    }
+  }, {
+    key: "onDragEnterFile",
+    value: function onDragEnterFile(evt) {
+      evt.preventDefault();
+
+      this.setState({ dragging: true });
+    }
+  }, {
+    key: "onDragExitFile",
+    value: function onDragExitFile(evt) {
+      evt.preventDefault();
+
+      this.setState({ dragging: false });
+    }
+  }, {
+    key: "onDropFiles",
+    value: function onDropFiles(evt) {
+      evt.preventDefault();
+
+      this.setState({ dragging: false });
+
+      var onUpdate = this.props.onUpdate;
+
+
+      var items = Array.from(evt.dataTransfer.items);
+
+      var files = this.mergeFiles(items.map(function (item) {
+        return item.getAsFile();
+      }));
+
+      onUpdate(files);
+    }
+  }, {
+    key: "equalsFile",
+    value: function equalsFile(file1, file2) {
+      return file1.name === file2.name && file1.lastModified === file2.lastModified;
+    }
+  }, {
+    key: "mergeFiles",
+    value: function mergeFiles(files) {
+      var _this2 = this;
+
+      var _props$allowTypes = this.props.allowTypes,
+          allowTypes = _props$allowTypes === undefined ? [] : _props$allowTypes;
+
+
+      var _files = Array.from(this.props.files);
+
+      files.forEach(function (file2) {
+        var isNewFile = !_files.find(function (file1) {
+          return _this2.equalsFile(file1, file2);
+        });
+
+        var isAllowedFileType = !allowTypes.length || allowTypes.includes(file2.type);
+
+        if (isNewFile && isAllowedFileType) {
+          _files.push(file2);
+        }
+      });
+
+      return _files;
+    }
+  }, {
+    key: "triggerInput",
+    value: function triggerInput() {
+      this.refs.file.click();
+    }
+  }, {
+    key: "selectFiles",
+    value: function selectFiles(evt) {
+      var onUpdate = this.props.onUpdate;
+
+
+      var files = this.mergeFiles(Array.from(evt.target.files));
+
+      onUpdate(files);
+    }
+  }, {
+    key: "deleteFile",
+    value: function deleteFile(file2) {
+      var _this3 = this;
+
+      var onUpdate = this.props.onUpdate;
+
+
+      var files = Array.from(this.props.files).filter(function (file1) {
+        return !_this3.equalsFile(file1, file2);
+      });
+
+      onUpdate(files);
+    }
+  }, {
+    key: "render",
+    value: function render() {
+      var _this4 = this;
+
+      var _props = this.props,
+          files = _props.files,
+          note = _props.note;
+      var dragging = this.state.dragging;
+
+
+      return React.createElement(
+        "div",
+        { className: "mc-form-files" },
+        React.createElement(
+          "div",
+          {
+            "data-dragging": dragging,
+            onDrop: this.onDropFiles.bind(this),
+            onDragOver: this.onDragEnterFile.bind(this),
+            onDragLeave: this.onDragExitFile.bind(this) },
+          React.createElement(
+            "div",
+            { className: "mc-form-files-target" },
+            React.createElement(
+              "small",
+              null,
+              note || tx("drag_files_here")
+            ),
+            React.createElement(
+              "ul",
+              null,
+              files.map(function (file, i) {
+                return React.createElement(
+                  "li",
+                  { key: i },
+                  React.createElement(
+                    "span",
+                    null,
+                    React.createElement(
+                      "span",
+                      null,
+                      file.name + " (" + Format.filesize(file.size) + ")"
+                    ),
+                    React.createElement(IconButton, {
+                      icon: "delete",
+                      scale: 0.7,
+                      onPress: _this4.deleteFile.bind(_this4, file) })
+                  )
+                );
+              })
+            )
+          ),
+          React.createElement("input", {
+            ref: "file",
+            type: "file",
+            multiple: true,
+            onChange: this.selectFiles.bind(this) })
+        ),
+        React.createElement(
+          "button",
+          { className: "mc-form-files-add", onClick: this.triggerInput.bind(this) },
+          tx("add_files")
+        )
+      );
+    }
+  }]);
+
+  return FormFiles;
+}(React.Component);
+
+module.exports = FormFiles;
 
 });
 
