@@ -357,6 +357,11 @@ img[tabindex] {
   width: 1.6em;
   height: 1.6em;
 }
+.mc-check[data-size=xsmall] input {
+  background-size: 1.2em 1.2em;
+  width: 1.2em;
+  height: 1.2em;
+}
 .mc-check[data-shape=square] input {
   background-image: url("../img/mc/icon.check.square.0.svg");
 }

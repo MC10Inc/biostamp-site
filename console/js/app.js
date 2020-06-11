@@ -159,7 +159,7 @@ ReactDOM.render(React.createElement(_SensorView.SensorView, null), document.getE
 });
 
 require.register("js/util/ECGSignal.js", function(exports, require, module) {
-'use strict';
+"use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
@@ -191,25 +191,27 @@ var ECGSignal = exports.ECGSignal = function () {
 
     this.emgHighpass = new Fili.IirFilter(iirCalc.highpass({
       order: 4,
-      characteristic: 'butterworth',
+      characteristic: "butterworth",
       Fs: this.rateHz,
       Fc: 100
     }));
 
     this.emgEnvelope = new Fili.IirFilter(iirCalc.lowpass({
       order: 2,
-      characteristic: 'butterworth',
+      characteristic: "butterworth",
       Fs: this.rateHz,
       Fc: 10
     }));
   }
 
   _createClass(ECGSignal, [{
-    key: 'update',
+    key: "update",
     value: function update(newSamples) {
       this.samples = this.samples.concat(newSamples).slice(-this.nSamples);
+
       var newEcg = this.ecgFilter.multiStep(newSamples);
       this.ecgFiltered = this.ecgFiltered.concat(newEcg).slice(-this.nSamples);
+
       var newEmg = this.emgEnvelope.multiStep(this.emgHighpass.multiStep(newSamples).map(Math.abs));
       this.emgFiltered = this.emgFiltered.concat(newEmg).slice(-this.nSamples);
     }
@@ -885,15 +887,6 @@ var SensorConfig = exports.SensorConfig = function () {
         use: function use(value) {
           return value.mode !== AFE4900Mode.ECG && value.mode !== AFE4900Mode.SPO2;
         }
-      }, {
-        key: "photodiode",
-        values: [AFE4900Photodiode.PD1, AFE4900Photodiode.PD2],
-        tx: function tx(n) {
-          return ["PD1", "PD2"][n - 1];
-        },
-        use: function use(value) {
-          return value.mode !== AFE4900Mode.ECG && value.mode !== AFE4900Mode.SPO2;
-        }
       }],
       value: {
         mode: AFE4900Mode.ECG,
@@ -902,7 +895,7 @@ var SensorConfig = exports.SensorConfig = function () {
         photodiode: AFE4900Photodiode.PD1,
         samplingPeriodUs: 4000
       },
-      engaged: false
+      engaged: true
     }, {
       id: "environment",
       name: "Environment",
@@ -3471,7 +3464,6 @@ var _mc$ui$colors = mc.ui.colors,
 
 var COLOR_ECG = ORANGE;
 var COLOR_EMG = BLUE;
-
 var AUTOSCALE_SEC = 3;
 var DURATION_SEC = 10;
 
@@ -3589,13 +3581,16 @@ var ECGStream = exports.ECGStream = function (_React$Component) {
   }, {
     key: "render",
     value: function render() {
-      var smoothing = this.state.smoothing;
+      var _state = this.state,
+          smoothing = _state.smoothing,
+          filtered = _state.filtered;
 
 
       var bullet = mc.charts.Legend.DOT;
 
       var items = void 0;
-      if (this.state.filtered) {
+
+      if (filtered) {
         items = [{ label: "ECG", color: COLOR_ECG, bullet: bullet }, { label: "EMG", color: COLOR_EMG, bullet: bullet }];
       } else {
         items = [{ label: "Millivolts", color: COLOR_ECG, bullet: bullet }];
@@ -3604,12 +3599,12 @@ var ECGStream = exports.ECGStream = function (_React$Component) {
       return React.createElement(
         "div",
         null,
-        this.state.filtered ? this.renderFiltered.bind(this)() : this.renderRaw.bind(this)(),
+        filtered ? this.renderFiltered.bind(this)() : this.renderRaw.bind(this)(),
         React.createElement(mc.charts.Legend, { items: items }),
         React.createElement(Check, {
           label: "ECG / EMG Filter",
           checked: smoothing,
-          size: "small",
+          size: "xsmall",
           onCheck: this.setFiltered.bind(this) })
       );
     }
@@ -3645,7 +3640,6 @@ var BLUE = mc.ui.colors.BLUE;
 
 
 var COLOR_PPG = BLUE;
-
 var AUTOSCALE_SEC = 2;
 var DURATION_SEC = 10;
 var WIN_SEC = 5;
@@ -3724,15 +3718,17 @@ var PPGStream = exports.PPGStream = function (_React$Component) {
     }
   }, {
     key: "setSmoothing",
-    value: function setSmoothing(checked) {
-      var smoothing = checked;
-
+    value: function setSmoothing(smoothing) {
       this.setState({ smoothing: smoothing });
     }
   }, {
     key: "render",
     value: function render() {
-      var smoothing = this.state.smoothing;
+      var _state = this.state,
+          smoothing = _state.smoothing,
+          ppgSamples = _state.ppgSamples,
+          ppgSmoothedSamples = _state.ppgSmoothedSamples,
+          ppgText = _state.ppgText;
 
 
       var bullet = mc.charts.Legend.DOT;
@@ -3743,16 +3739,16 @@ var PPGStream = exports.PPGStream = function (_React$Component) {
         "div",
         null,
         React.createElement(_SensorStream.SensorStream, {
-          packets: this.state.smoothing ? this.state.ppgSmoothedSamples : this.state.ppgSamples,
+          packets: smoothing ? ppgSmoothedSamples : ppgSamples,
           colors: [COLOR_PPG],
           numPoints: this.secToSamples(DURATION_SEC),
           autoscalePoints: this.secToSamples(AUTOSCALE_SEC),
-          plotText: this.state.ppgText }),
+          plotText: ppgText }),
         React.createElement(mc.charts.Legend, { items: items }),
         React.createElement(Check, {
           label: "Smoothing",
           checked: smoothing,
-          size: "small",
+          size: "xsmall",
           onCheck: this.setSmoothing.bind(this) })
       );
     }
@@ -3878,12 +3874,11 @@ var _mc$ui$colors = mc.ui.colors,
 
 var COLOR_RED_CH = RED;
 var COLOR_IR_CH = TEAL;
-
 var AUTOSCALE_SEC = 2;
 var DURATION_SEC = 10;
 var WIN_SEC = 5;
 
-function zip(cols) {
+var zip = function zip(cols) {
   var rows = new Array(cols[0].length);
 
   var _loop = function _loop(i) {
@@ -3897,7 +3892,7 @@ function zip(cols) {
   }
 
   return rows;
-}
+};
 
 var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
   _inherits(SPO2Stream, _React$Component);
@@ -3951,6 +3946,7 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
     key: "initSignals",
     value: function initSignals() {
       var rateHz = 1000000 / this.props.samplingPeriodUs;
+
       this.redSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC, "spo2");
       this.irSignal = new _PPGSignal.PPGSignal(rateHz, DURATION_SEC, WIN_SEC, "spo2");
       this.setState({ rateHz: rateHz });
@@ -3983,15 +3979,20 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
     }
   }, {
     key: "setSmoothing",
-    value: function setSmoothing(checked) {
-      var smoothing = checked;
-
+    value: function setSmoothing(smoothing) {
       this.setState({ smoothing: smoothing });
     }
   }, {
     key: "render",
     value: function render() {
-      var smoothing = this.state.smoothing;
+      var _state = this.state,
+          smoothing = _state.smoothing,
+          redSamples = _state.redSamples,
+          redSmoothedSamples = _state.redSmoothedSamples,
+          redText = _state.redText,
+          irSamples = _state.irSamples,
+          irSmoothedSamples = _state.irSmoothedSamples,
+          irText = _state.irText;
 
 
       var bullet = mc.charts.Legend.DOT;
@@ -4012,19 +4013,19 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
         "div",
         null,
         React.createElement(_SensorStream.SensorStream, {
-          packets: this.state.smoothing ? this.state.redSmoothedSamples : this.state.redSamples,
+          packets: smoothing ? redSmoothedSamples : redSamples,
           colors: [COLOR_RED_CH],
           numPoints: this.secToSamples(DURATION_SEC),
           autoscalePoints: this.secToSamples(AUTOSCALE_SEC),
-          plotText: this.state.redText }),
+          plotText: redText }),
         React.createElement(_SensorStream.SensorStream, {
-          packets: this.state.smoothing ? this.state.irSmoothedSamples : this.state.irSamples,
+          packets: smoothing ? irSmoothedSamples : irSamples,
           colors: [COLOR_IR_CH],
           numPoints: this.secToSamples(DURATION_SEC),
           autoscalePoints: this.secToSamples(AUTOSCALE_SEC),
-          plotText: this.state.irText }),
+          plotText: irText }),
         React.createElement(_SensorStream.SensorStream, {
-          packets: zip([this.state.redSamples, this.state.irSamples]),
+          packets: zip([redSamples, irSamples]),
           colors: [COLOR_RED_CH, COLOR_IR_CH],
           numPoints: this.secToSamples(DURATION_SEC),
           fixedExtent: [0, 1 << 21],
@@ -4034,7 +4035,7 @@ var SPO2Stream = exports.SPO2Stream = function (_React$Component) {
         React.createElement(Check, {
           label: "Smoothing",
           checked: smoothing,
-          size: "small",
+          size: "xsmall",
           onCheck: this.setSmoothing.bind(this) })
       );
     }
@@ -4141,55 +4142,49 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
   }, {
     key: "render",
     value: function render() {
-      var _this2 = this;
+      var _this3 = this;
 
       var _props3 = this.props,
           feature = _props3.feature,
           disabled = _props3.disabled,
           emitter = _props3.emitter,
           children = _props3.children;
-      var packets = this.state.packets;
+      var id = feature.id,
+          value = feature.value;
 
-
-      var bullet = mc.charts.Legend.DOT;
-      var value = feature.value;
 
       function renderFeature(feature) {
-        if (feature.id === "afe4900") {
-          if (feature.value.mode === AFE4900Mode.SPO2) {
-            return React.createElement(_SPO2Stream.SPO2Stream, {
-              emitter: emitter,
-              samplingPeriodUs: feature.value.samplingPeriodUs });
-          } else if (feature.value.mode === AFE4900Mode.PPG) {
-            return React.createElement(_PPGStream.PPGStream, {
-              emitter: emitter,
-              samplingPeriodUs: feature.value.samplingPeriodUs,
-              ppgIndex: 0 });
-          } else if (feature.value.mode === AFE4900Mode.ECG) {
-            return React.createElement(_ECGStream.ECGStream, {
-              emitter: emitter,
-              samplingPeriodUs: feature.value.samplingPeriodUs });
-          } else if (feature.value.mode === AFE4900Mode.PTT) {
+        var _this2 = this;
+
+        var mode = value.mode,
+            samplingPeriodUs = value.samplingPeriodUs;
+
+
+        if (id === "afe4900") {
+          if (mode === AFE4900Mode.SPO2) {
+            return React.createElement(_SPO2Stream.SPO2Stream, { emitter: emitter, samplingPeriodUs: samplingPeriodUs });
+          } else if (mode === AFE4900Mode.PPG) {
+            return React.createElement(_PPGStream.PPGStream, { emitter: emitter, samplingPeriodUs: samplingPeriodUs, ppgIndex: 0 });
+          } else if (mode === AFE4900Mode.ECG) {
+            return React.createElement(_ECGStream.ECGStream, { emitter: emitter, samplingPeriodUs: samplingPeriodUs });
+          } else if (mode === AFE4900Mode.PTT) {
             return React.createElement(
               "div",
               null,
-              React.createElement(_ECGStream.ECGStream, {
-                emitter: emitter,
-                samplingPeriodUs: feature.value.samplingPeriodUs,
-                ecgIndex: 0 }),
-              React.createElement(_PPGStream.PPGStream, {
-                emitter: emitter,
-                samplingPeriodUs: feature.value.samplingPeriodUs,
-                ppgIndex: 1 })
+              React.createElement(_ECGStream.ECGStream, { emitter: emitter, samplingPeriodUs: samplingPeriodUs, ecgIndex: 0 }),
+              React.createElement(_PPGStream.PPGStream, { emitter: emitter, samplingPeriodUs: samplingPeriodUs, ppgIndex: 1 })
             );
           }
         }
 
         return feature.signals(value).map(function (group, i) {
+          var packets = _this2.state.packets;
+
           var data = feature.parse ? packets.map(feature.parse(value, i)) : packets;
           var colors = group.map(function (g) {
             return g.color;
           });
+          var bullet = mc.charts.Legend.DOT;
           var items = group.map(function (g) {
             return _extends({}, g, { bullet: bullet });
           });
@@ -4227,7 +4222,7 @@ var SensorPanel = exports.SensorPanel = function (_React$Component) {
                   value: value[opt.key],
                   "data-applies": applies,
                   disabled: disabled || !feature.engaged || !applies,
-                  onChange: _this2.editFeature.bind(_this2, feature.id, opt.key) },
+                  onChange: _this3.editFeature.bind(_this3, feature.id, opt.key) },
                 opt.values.map(function (val) {
                   return React.createElement(
                     "option",

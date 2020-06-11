@@ -3268,7 +3268,9 @@ var ui = new Emitter({
   },
 
   help: function help(path) {
-    ui.modal(React.createElement(HelpView, { path: path }), { width: "400px" });
+    var width = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : "400px";
+
+    ui.modal(React.createElement(HelpView, { path: path }), { width: width });
   },
 
   stat: function stat() {
